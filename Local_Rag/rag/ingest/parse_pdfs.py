@@ -333,6 +333,10 @@ def run(limit: int | None = None, force: bool = False) -> None:
     library = _load_library()
     converter = DocumentConverter()
 
+    if not PAPERS_PDF_DIR.exists():
+        print(f"No papers directory at {PAPERS_PDF_DIR} — nothing to parse.")
+        return
+
     # Case-insensitive match (.pdf/.PDF) — glob('*.pdf') would miss `Foo.PDF`.
     pdfs = sorted(
         p for p in PAPERS_PDF_DIR.iterdir()

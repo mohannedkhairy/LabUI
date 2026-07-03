@@ -128,7 +128,7 @@
           <a href="{{ j.submission_url }}" target="_blank"
              class="text-indigo-500 hover:underline text-xs mr-3">Portal →</a>
           {% endif %}
-          <button onclick="deleteJournal('{{ j.id }}', '{{ j.name|e }}')"
+          <button onclick="deleteJournal({{ j.id | tojson }}, {{ j.name | tojson }})"
                   title="Remove journal" class="text-gray-300 hover:text-red-500 text-xs">✕</button>
         </td>
       </tr>

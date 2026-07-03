@@ -345,6 +345,8 @@ def transition_submission_api(sub_id: str, body: TransitionRequest):
         _transition(conn, sub_id, body.to_state, notes=body.notes)
     except InvalidTransitionError as e:
         raise HTTPException(422, str(e))
+    except ValueError as e:
+        raise HTTPException(404, str(e))
     return {"ok": True}
 
 
@@ -660,6 +662,8 @@ async def submission_transition_form(
         _transition(conn, sub_id, to_state, notes=notes or None)
     except InvalidTransitionError as e:
         raise HTTPException(422, str(e))
+    except ValueError as e:
+        raise HTTPException(404, str(e))
     return RedirectResponse(f"/submissions/{sub_id}", status_code=303)
 
 
@@ -805,6 +809,20 @@ def rag_delete_link(link_id: int):
         raise HTTPException(500, f"Failed to delete link: {e}")
 
 
+@app.get("/api/rag/lab/stats")
+def rag_lab_stats_api():
+    """Get research lab statistics across all manuscripts.
+
+    Registered BEFORE the /{ms_id} route: FastAPI matches in registration
+    order, so the other way round "stats" is captured as a manuscript id.
+    """
+    try:
+        from integration.lab_view import get_research_lab_stats
+        return get_research_lab_stats()
+    except Exception as e:
+        return {"error": f"Failed to get stats: {e}", "stats": {}}
+
+
 @app.get("/api/rag/lab/{ms_id}")
 def rag_lab_dashboard_api(ms_id: str):
     """Get research lab dashboard data for a manuscript."""
@@ -813,16 +831,6 @@ def rag_lab_dashboard_api(ms_id: str):
         return research_lab_dashboard(ms_id)
     except Exception as e:
         return {"error": f"Failed to get lab dashboard: {e}", "template_data": {}}
-
-
-@app.get("/api/rag/lab/stats")
-def rag_lab_stats_api():
-    """Get research lab statistics across all manuscripts."""
-    try:
-        from integration.lab_view import get_research_lab_stats
-        return get_research_lab_stats()
-    except Exception as e:
-        return {"error": f"Failed to get stats: {e}", "stats": {}}
 
 
 # ── Template: Research Lab ─────────────────────────────────
@@ -1139,6 +1147,8 @@ def schedule_page(request: Request, month: Optional[str] = None):
         month = datetime.now().strftime("%Y-%m")
     try:
         y, m = month.split("-"); y, m = int(y), int(m)
+        if not (1 <= m <= 12 and 1 <= y <= 9999):
+            raise ValueError(month)
     except Exception:
         raise HTTPException(400, f"bad month {month!r}; expected YYYY-MM")
 

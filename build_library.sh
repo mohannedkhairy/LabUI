@@ -46,4 +46,6 @@ echo "Leave this running. To background it:  nohup ./build_library.sh > /dev/nul
 echo
 
 # Tee to a log so you can walk away and check progress later with: tail -f build_library.log
-"$VENV/bin/python" build_library.py "$@" 2>&1 | tee -a "$LOG"
+# ${1:+"$@"}: on macOS's stock bash 3.2, expanding "$@" with zero args under
+# `set -u` aborts with "unbound variable" — this form expands to nothing safely.
+"$VENV/bin/python" build_library.py ${1:+"$@"} 2>&1 | tee -a "$LOG"

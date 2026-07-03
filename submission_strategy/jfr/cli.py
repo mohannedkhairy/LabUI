@@ -85,7 +85,11 @@ def corpus_refresh(
     s = get_settings()
 
     if journal_id:
-        journals = [dict(conn.execute("SELECT * FROM journal WHERE id=?", (journal_id,)).fetchone())]
+        row = conn.execute("SELECT * FROM journal WHERE id=?", (journal_id,)).fetchone()
+        if row is None:
+            rprint(f"[red]Journal '{journal_id}' not found. Run `jfr corpus init` first.[/red]")
+            raise typer.Exit(1)
+        journals = [dict(row)]
     else:
         journals = [dict(r) for r in conn.execute("SELECT * FROM journal").fetchall()]
 
@@ -220,7 +224,11 @@ def corpus_update_if(
     s = get_settings()
 
     if journal_id:
-        journals = [dict(conn.execute("SELECT id, issn_electronic, issn_print FROM journal WHERE id=?", (journal_id,)).fetchone())]
+        row = conn.execute("SELECT id, issn_electronic, issn_print FROM journal WHERE id=?", (journal_id,)).fetchone()
+        if row is None:
+            rprint(f"[red]Journal '{journal_id}' not found. Run `jfr corpus init` first.[/red]")
+            raise typer.Exit(1)
+        journals = [dict(row)]
     else:
         journals = [dict(r) for r in conn.execute("SELECT id, issn_electronic, issn_print FROM journal").fetchall()]
 
@@ -405,7 +413,7 @@ def recommend_cmd(
                 if r.rationale:
                     msg_lines.append(f"     {r.rationale[:80]}")
         msg_lines.append("")
-        msg_lines.append("Run `jfr recommend -m {manuscript_id}` for full details.")
+        msg_lines.append(f"Run `jfr recommend -m {manuscript_id}` for full details.")
         whatsapp_msg = "\n".join(msg_lines)
 
         # Optional push delivery via a user-provided `hermes_tools` module.
@@ -518,19 +526,33 @@ def submission_comment(
 
 # ── rag: search ─────────────────────────────────────
 
+def _web_base() -> str:
+    """Base URL of the running web UI, honouring JFR_WEB_HOST/JFR_WEB_PORT
+    (start.sh exports those; the old hardcoded :8765 never matched LabUI's
+    default :8770)."""
+    s = get_settings()
+    host = s.web_host if s.web_host not in ("", "0.0.0.0") else "127.0.0.1"
+    return f"http://{host}:{s.web_port}"
+
+
 @rag_search_app.command("query")
 def rag_search_query(
     query: str = typer.Argument(..., help="Search query for RAG papers"),
     limit: int = typer.Option(10, "-n", "--limit", help="Number of results"),
 ):
     """Search your paper collection via RAG."""
-    import urllib.request, urllib.parse, json
+    import urllib.request, json
     try:
-        url = f"http://127.0.0.1:8765/api/rag/search?query={urllib.parse.quote(query)}&limit={limit}"
-        req = urllib.request.urlopen(url, timeout=15)
-        data = json.loads(req.read())
+        # The web API is POST /api/rag/search with a JSON body (a GET with
+        # query params returns 405).
+        req = urllib.request.Request(
+            f"{_web_base()}/api/rag/search",
+            data=json.dumps({"query": query, "top_k": limit}).encode(),
+            headers={"Content-Type": "application/json"},
+        )
+        data = json.loads(urllib.request.urlopen(req, timeout=60).read())
     except Exception as e:
-        rprint(f"[red]Error:[/red] Could not reach web UI at http://127.0.0.1:8765 — run 'jfr web serve' first. ({e})")
+        rprint(f"[red]Error:[/red] Could not reach web UI at {_web_base()} — run './start.sh' or 'jfr web serve' first. ({e})")
         raise typer.Exit(1)
 
     results = data.get("results", [])
@@ -587,7 +609,9 @@ def rag_link_add(
         ctx = ssl.create_default_context()
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
-        conn = http.client.HTTPConnection("127.0.0.1", port=8765, timeout=10)
+        _s = get_settings()
+        _host = _s.web_host if _s.web_host not in ("", "0.0.0.0") else "127.0.0.1"
+        conn = http.client.HTTPConnection(_host, port=_s.web_port, timeout=10)
         body = f"ms_id={urllib.parse.quote(manuscript_id)}&paper_id={urllib.parse.quote(paper_id)}&link_type={urllib.parse.quote(link_type)}&note={urllib.parse.quote(note)}"
         headers = {"Content-Type": "application/x-www-form-urlencoded"}
         conn.request("POST", "/api/rag/links", body, headers)
@@ -612,7 +636,7 @@ def rag_link_list(ms_id: str = typer.Argument(..., help="Manuscript ID to list p
     """List all RAG papers linked to a manuscript."""
     import urllib.request, json
     try:
-        url = f"http://127.0.0.1:8765/api/rag/links/{ms_id}"
+        url = f"{_web_base()}/api/rag/links/{ms_id}"
         resp = json.loads(urllib.request.urlopen(url, timeout=15).read())
         links = resp.get("links", [])
     except Exception as e:
@@ -652,7 +676,7 @@ def rag_lab_stats():
     """Show research lab statistics."""
     import urllib.request, json
     try:
-        resp = json.loads(urllib.request.urlopen("http://127.0.0.1:8765/api/rag/lab", timeout=15).read())
+        resp = json.loads(urllib.request.urlopen(f"{_web_base()}/api/rag/lab/stats", timeout=15).read())
     except Exception as e:
         rprint(f"[red]Error:[/red] Could not connect ({e})")
         raise typer.Exit(1)
@@ -681,8 +705,8 @@ def rag_lab_stats():
 def rag_lab_open(ms_id: str = typer.Argument(None, help="Manuscript to open")):
     """Open the research lab in a browser."""
     import webbrowser
-    url = "http://127.0.0.1:8765/lab" + (f"?ms={ms_id}" if ms_id else "")
-    rprint(f"[cyan]\u2192[/cyan] Opening Research Lab at [bold]http://127.0.0.1:8765/lab[/bold]")
+    url = f"{_web_base()}/lab" + (f"?ms={ms_id}" if ms_id else "")
+    rprint(f"[cyan]\u2192[/cyan] Opening Research Lab at [bold]{_web_base()}/lab[/bold]")
     try:
         webbrowser.open(url)
     except Exception as e:
@@ -824,14 +848,16 @@ app.add_typer(web_app, name="web")
 
 @web_app.command("serve")
 def web_serve(
-    host: str = typer.Option("127.0.0.1", help="Bind host"),
-    port: int = typer.Option(8765, help="Bind port"),
+    host: Optional[str] = typer.Option(None, help="Bind host (default: JFR_WEB_HOST or 127.0.0.1)"),
+    port: Optional[int] = typer.Option(None, help="Bind port (default: JFR_WEB_PORT or 8765)"),
     reload: bool = typer.Option(False, help="Enable auto-reload (development)"),
 ):
-    """Start the web interface on localhost:8765."""
+    """Start the web interface (defaults honour JFR_WEB_HOST/JFR_WEB_PORT)."""
     import uvicorn
     s = get_settings()
     s.ensure_dirs()
+    host = host or s.web_host
+    port = port or s.web_port
     rprint(f"[cyan]→[/cyan] Starting jfr web UI at http://{host}:{port}")
     uvicorn.run("jfr.web.app:app", host=host, port=port, reload=reload)
 

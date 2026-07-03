@@ -80,6 +80,11 @@ CREATE VIRTUAL TABLE IF NOT EXISTS chunks_vec USING vec0(
 
 
 def _init_db(conn: sqlite3.Connection) -> None:
+    # WAL lets the web process read (search/chat) while an index build writes;
+    # the default rollback journal makes readers hit "database is locked".
+    # The mode is persistent, so setting it at schema-init covers every later
+    # connection. (memory.db and graph.db already do this.)
+    conn.execute("PRAGMA journal_mode=WAL")
     conn.executescript(DDL)
     # sqlite-vec virtual table — must be loaded first
     conn.executescript(VEC_DDL)

@@ -127,20 +127,24 @@ def _refresh_worker(
     if not _run_lock.acquire(blocking=False):
         return  # a refresh is already in progress
 
-    from jfr.corpus import (
-        fetch_openalex_articles,
-        fetch_crossref_articles,
-        ingest_articles,
-        embed_corpus,
-    )
-    from qdrant_client.models import Distance, VectorParams
-
-    s = get_settings()
-    months = months or MONTHS
-    limit = limit or LIMIT
-    source = source or SOURCE
-    conn = get_conn(s.db_path)
+    # Everything after the acquire lives inside try/finally — an import or
+    # DB-open failure here would otherwise leak the lock and permanently
+    # disable refresh for the process lifetime.
+    conn = None
     try:
+        from jfr.corpus import (
+            fetch_openalex_articles,
+            fetch_crossref_articles,
+            ingest_articles,
+            embed_corpus,
+        )
+        from qdrant_client.models import Distance, VectorParams
+
+        s = get_settings()
+        months = months or MONTHS
+        limit = limit or LIMIT
+        source = source or SOURCE
+        conn = get_conn(s.db_path)
         if journal_ids:
             rows = [
                 conn.execute("SELECT * FROM journal WHERE id=?", (jid,)).fetchone()
@@ -209,7 +213,8 @@ def _refresh_worker(
         _set(running=False, phase="error", journal=None, error=str(e),
              message=f"Refresh failed: {e}")
     finally:
-        conn.close()
+        if conn is not None:
+            conn.close()
         _run_lock.release()
 
 

@@ -484,7 +484,7 @@
       const meta = [m.parameter_size, m.size_gb ? `${m.size_gb} GB` : null, m.quantization]
         .filter(Boolean).join(' · ');
       return `
-        <button onclick="pickModel('${m.name.replace(/'/g, "\\'")}'); this.closest('[x-data]').__x.$data.open = false;"
+        <button onclick="pickModel('${m.name.replace(/'/g, "\\'")}'); Alpine.$data(this.closest('[x-data]')).open = false;"
           class="w-full text-left px-3 py-2 rounded-md hover:bg-ink-50 dark:hover:bg-ink-800 flex items-center justify-between gap-2 transition ${isActive ? 'bg-brand-50 dark:bg-brand-950' : ''}">
           <div class="min-w-0 flex-1">
             <div class="font-mono text-xs truncate ${isActive ? 'text-brand-700 dark:text-brand-300 font-semibold' : ''}">${m.name}${m.is_default ? ' <span class=\"text-[9px] text-ink-400\">default</span>' : ''}</div>

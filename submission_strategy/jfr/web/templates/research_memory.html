@@ -34,6 +34,7 @@ async function loadAllMemories() {
   list.innerHTML = '<div class="text-ink-400 text-center py-8 text-sm">Loading…</div>';
   try {
     const r = await fetch('/api/rag/memory');
+    if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
     renderMemories(await r.json());
   } catch (e) {
     list.innerHTML = `<div class="text-rose-500 text-sm">Failed: ${escapeHtml(e.message)}</div>`;
@@ -50,6 +51,7 @@ async function searchMemories() {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({query: q})
     });
+    if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
     renderMemories(await r.json());
   } catch (e) {
     list.innerHTML = `<div class="text-rose-500 text-sm">Failed: ${escapeHtml(e.message)}</div>`;

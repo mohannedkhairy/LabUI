@@ -60,6 +60,7 @@ def chunk_section(
         end = pos + CHUNK_TARGET_CHARS
         if end >= len(text):
             chunk_text = text[pos:]
+            boundary = len(text)
         else:
             # Try to break at a sentence or paragraph boundary
             boundary = text.rfind("\n\n", pos, end)
@@ -92,10 +93,17 @@ def chunk_section(
             )
             chunk_index += 1
 
-        # Advance with overlap
-        next_pos = pos + CHUNK_TARGET_CHARS - CHUNK_OVERLAP_CHARS
+        if boundary >= len(text):
+            break
+
+        # Advance from where this chunk actually ended (minus overlap) — a
+        # fixed stride skips the text between an early boundary and the
+        # stride point, silently dropping it from the index.
+        next_pos = boundary - CHUNK_OVERLAP_CHARS
         if next_pos <= pos:
-            next_pos = pos + 1
+            # Chunk too small to overlap — continue from its end instead of
+            # re-emitting the same text.
+            next_pos = boundary
         pos = next_pos
 
     return chunks
