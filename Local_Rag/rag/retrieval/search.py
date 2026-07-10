@@ -17,7 +17,7 @@ from config import (
 
 
 def _open_db() -> sqlite3.Connection:
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = sqlite3.connect(str(DB_PATH), timeout=30)
     conn.enable_load_extension(True)
     import sqlite_vec
     sqlite_vec.load(conn)
@@ -27,11 +27,12 @@ def _open_db() -> sqlite3.Connection:
 
 
 def _sanitize_fts(query: str) -> str:
-    """Escape FTS5 special characters."""
-    # Remove chars that break FTS5 queries
-    query = re.sub(r'["\(\)\*\:\^]', ' ', query)
-    query = query.strip()
-    return f'"{query}"' if query else '""'
+    """Turn free text into a safe FTS5 query: each token individually quoted
+    and OR-joined. Quoting the whole query as one phrase (the old behaviour)
+    only matched chunks containing the words consecutively, so the BM25 arm
+    returned nothing for most natural-language questions."""
+    tokens = re.findall(r"\w+", query)
+    return " OR ".join(f'"{t}"' for t in tokens) if tokens else '""'
 
 
 def _bm25_search(conn: sqlite3.Connection, query: str, top_n: int, selected_paper_ids: list[str] = None) -> list[str]:
@@ -94,24 +95,40 @@ def _dense_search(
     vec_bytes = query_vec.astype(np.float32).tobytes()
     filter_clause = ""
     params = [vec_bytes, top_n]
-    
+
     if selected_paper_ids:
-        placeholders = ",".join("?" * len(selected_paper_ids))
-        filter_clause = f" AND c.paper_id IN ({placeholders}) "
-        params.extend(selected_paper_ids)
-        
-    rows = conn.execute(
-        f"""
-        SELECT v.chunk_id
-        FROM chunks_vec v
-        JOIN chunks c ON c.chunk_id = v.chunk_id
-        WHERE v.embedding MATCH ?
-          AND v.k = ?
-          {filter_clause}
-        ORDER BY v.distance
-        """,
-        tuple(params),
-    ).fetchall()
+        # Constrain the KNN itself (sqlite-vec supports IN on the primary key).
+        # Filtering with a JOIN after the fact discards selected-paper chunks
+        # that fall outside the *global* top-k, returning few or no results
+        # once the library outgrows k.
+        ph = ",".join("?" * len(selected_paper_ids))
+        chunk_ids = [
+            r[0] for r in conn.execute(
+                f"SELECT chunk_id FROM chunks WHERE paper_id IN ({ph})",
+                selected_paper_ids,
+            )
+        ]
+        if not chunk_ids:
+            return []
+        vph = ",".join("?" * len(chunk_ids))
+        filter_clause = f" AND v.chunk_id IN ({vph}) "
+        params.extend(chunk_ids)
+
+    try:
+        rows = conn.execute(
+            f"""
+            SELECT v.chunk_id
+            FROM chunks_vec v
+            WHERE v.embedding MATCH ?
+              AND v.k = ?
+              {filter_clause}
+            ORDER BY v.distance
+            """,
+            tuple(params),
+        ).fetchall()
+    except sqlite3.OperationalError:
+        # Missing/empty index (fresh install) — degrade like _bm25_search does.
+        return []
     return [r["chunk_id"] for r in rows]
 
 

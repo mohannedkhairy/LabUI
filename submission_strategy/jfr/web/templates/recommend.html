@@ -104,7 +104,11 @@ function runRecommend() {
     '<p>Scoring journals… this takes ~10s on first run (model load).</p></div>';
 
   fetch('/htmx/recommend/' + ms + '?top=' + top)
-    .then(r => r.text())
+    .then(r => {
+      if (!r.ok) throw new Error('Recommendation failed (HTTP ' + r.status + '). ' +
+        'On a fresh install the journal corpus may still be building — check /api/corpus/refresh/status and retry.');
+      return r.text();
+    })
     .then(html => {
       document.getElementById('results-area').innerHTML = html;
       document.getElementById('btn-label').textContent = 'Run Recommendations';

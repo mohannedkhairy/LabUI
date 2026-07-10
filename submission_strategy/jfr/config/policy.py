@@ -59,6 +59,8 @@ class Policy(BaseModel):
     def check_open_access(self, is_fully_oa: bool, is_hybrid_oa: bool) -> tuple[bool, str]:
         if is_fully_oa and not self.open_access.fully_oa_allowed:
             return False, "fully OA not allowed by policy"
+        if is_hybrid_oa and not self.open_access.hybrid_oa_allowed:
+            return False, "hybrid OA not allowed by policy"
         return True, ""
 
     def check_impact_factor(self, impact_factor: Optional[float], journal_id: str = "") -> tuple[bool, str]:

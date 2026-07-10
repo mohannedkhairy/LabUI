@@ -294,12 +294,15 @@ def search_memories(
 
     # FTS search
     try:
-        safe = re.sub(r'["\(\)\*\:\^]', " ", query_text).strip()
+        # OR-joined quoted tokens — quoting the whole query as one phrase only
+        # matches memories containing the words consecutively.
+        tokens = re.findall(r"\w+", query_text)
+        safe = " OR ".join(f'"{t}"' for t in tokens)
         if safe:
             fts_rows = conn.execute(
                 "SELECT memory_id, content FROM memories_fts"
                 " WHERE memories_fts MATCH ? LIMIT ?",
-                (f'"{safe}"', top_k * 3),
+                (safe, top_k * 3),
             ).fetchall()
             for rank, r in enumerate(fts_rows, 1):
                 mid = r["memory_id"]

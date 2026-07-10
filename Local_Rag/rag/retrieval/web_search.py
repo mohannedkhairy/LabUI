@@ -29,7 +29,10 @@ _ACADEMIC_DOMAINS = {
 
 def _domain(url: str) -> str:
     try:
-        return urlparse(url).netloc.lstrip("www.")
+        netloc = urlparse(url).netloc
+        # NOT lstrip("www."): that strips a character *set* and mangles
+        # domains like wiley.com -> iley.com.
+        return netloc[4:] if netloc.startswith("www.") else netloc
     except Exception:
         return ""
 

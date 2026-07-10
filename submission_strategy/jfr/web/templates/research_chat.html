@@ -603,10 +603,16 @@ function toast(msg) {
 }
 
 async function openPaper(paperId) {
+  // Open the window synchronously (inside the click) so popup blockers allow
+  // it — after the await the transient activation may have expired and
+  // window.open returns null.
+  const w = window.open('', '_blank');
+  if (w) w.document.write('<p style="font-family:Inter,sans-serif;color:#8b94a6;margin:40px">Loading…</p>');
   try {
     const r = await fetch('/api/rag/paper?id=' + encodeURIComponent(paperId));
     const d = await r.json();
-    const w = window.open('', '_blank');
+    if (!w) throw new Error('popup blocked');
+    w.document.open();
     w.document.write(`
       <html><head><title>${escapeHtml(d.title || paperId)}</title>
       <style>body{font-family:Inter,sans-serif;max-width:780px;margin:30px auto;padding:0 20px;color:#1c2230;line-height:1.6}
@@ -619,7 +625,11 @@ async function openPaper(paperId) {
       <div class="toc"><strong>Sections:</strong><br/>${(d.sections || []).map(s => `${escapeHtml(s.name)} (p. ${s.page_start}${s.page_end !== s.page_start ? '–' + s.page_end : ''})`).join('<br/>')}</div>
       ${d.summary ? `<h2>Summary</h2><pre style="white-space:pre-wrap;font-family:inherit">${escapeHtml(d.summary)}</pre>` : ''}
       </body></html>`);
-  } catch (e) { alert('Failed to load paper: ' + e.message); }
+    w.document.close();
+  } catch (e) {
+    if (w) { try { w.close(); } catch (_) {} }
+    alert('Failed to load paper: ' + e.message);
+  }
 }
 
 // ── Markdown ──────────────────────────────────────────────────

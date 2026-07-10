@@ -148,15 +148,16 @@ def research_lab_view(query: str = None, ms_id: str = None) -> dict:
 def research_lab_dashboard(ms_id: str) -> dict:
     """
     Get dashboard data for a specific manuscript in the research lab.
-    
+
     Args:
         ms_id: Manuscript ID
-        
+
     Returns:
         dict with dashboard data for templating
     """
     jfr_conn = sqlite3.connect(str(JFR_DB_PATH))
-    
+    jfr_conn.row_factory = sqlite3.Row
+
     # Get manuscript
     ms = jfr_conn.execute(
         "SELECT * FROM manuscript WHERE id=?", (ms_id,)
@@ -220,24 +221,36 @@ def get_research_lab_stats() -> dict:
     jfr_conn = sqlite3.connect(str(JFR_DB_PATH))
     manuscripts_count = jfr_conn.execute("SELECT COUNT(*) FROM manuscript").fetchone()[0]
     submissions_count = jfr_conn.execute("SELECT COUNT(*) FROM submission").fetchone()[0]
-    
-    # RAG stats
-    rag_stats = {
-        'papers_indexed': 1470,
-        'chunks_indexed': 15000,
-        'total_entities': 500,
-        'total_memories': 200,
-    }
-    
     jfr_conn.close()
-    
+
+    def _count(db_path: Path, sql: str) -> int:
+        """COUNT(*) from another sqlite db; 0 if the db/table doesn't exist yet."""
+        if not db_path.exists():
+            return 0
+        try:
+            conn = sqlite3.connect(str(db_path))
+            try:
+                return conn.execute(sql).fetchone()[0]
+            finally:
+                conn.close()
+        except Exception:
+            return 0
+
+    entities = _count(GRAPH_DB_PATH, "SELECT COUNT(*) FROM entities")
+    rag_stats = {
+        'papers_indexed': _count(RAG_DB_PATH, "SELECT COUNT(*) FROM papers"),
+        'chunks_indexed': _count(RAG_DB_PATH, "SELECT COUNT(*) FROM chunks"),
+        'total_entities': entities,
+        'total_memories': _count(MEMORY_DB_PATH, "SELECT COUNT(*) FROM memories"),
+    }
+
     return {
         'manuscripts': manuscripts_count,
         'submissions': submissions_count,
         'rag': rag_stats,
         'graph': {
-            'entities': 500,
-            'relations': 1000,
+            'entities': entities,
+            'relations': _count(GRAPH_DB_PATH, "SELECT COUNT(*) FROM relations"),
         }
     }
 
@@ -250,6 +263,7 @@ def get_available_manuscripts() -> list:
         list of manuscript dicts
     """
     jfr_conn = sqlite3.connect(str(JFR_DB_PATH))
+    jfr_conn.row_factory = sqlite3.Row
     mss = jfr_conn.execute("SELECT id, title, created_at FROM manuscript ORDER BY created_at DESC").fetchall()
     jfr_conn.close()
     

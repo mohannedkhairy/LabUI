@@ -87,7 +87,7 @@ def _get_models():
 
 
 def _open_db() -> sqlite3.Connection:
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = sqlite3.connect(str(DB_PATH), timeout=30)
     conn.enable_load_extension(True)
     import sqlite_vec
     sqlite_vec.load(conn)
@@ -355,6 +355,10 @@ def _existing_paper_ids() -> set[str]:
 
 
 # ── Auto-index background thread (mirrors Flask server's behaviour) ───────────
+# Serialises index runs: the poll loop and the manual "Index now" trigger both
+# run parse_pdfs+build_index subprocesses, and two concurrent build_index
+# processes fight over rag.db ("database is locked", clobbered status).
+_index_run_lock = threading.Lock()
 _ingest_state: dict = {
     "running": False,
     "last_check": None,
@@ -419,38 +423,43 @@ def _auto_index_loop() -> None:
             new_ids = set(pdf_id_map.keys()) - existing_ids
             _ingest_state["new_count"] = len(new_ids)
 
-            if new_ids:
-                _ingest_state["running"] = True
-                _ingest_state["message"] = f"Indexing {len(new_ids)} new paper(s)…"
-                _ingest_state["last_returncode"] = None
+            if new_ids and not _index_run_lock.acquire(blocking=False):
+                _ingest_state["message"] = "Index run already in progress — waiting"
+            elif new_ids:
+                try:
+                    _ingest_state["running"] = True
+                    _ingest_state["message"] = f"Indexing {len(new_ids)} new paper(s)…"
+                    _ingest_state["last_returncode"] = None
 
-                def _tail(out: str, err: str, n: int = 180) -> str:
-                    """Whichever stream is non-empty wins. Strips ANSI/blank lines."""
-                    body = (err.strip() or out.strip() or "").splitlines()
-                    body = [ln for ln in body if ln.strip()]
-                    return (" │ ".join(body[-3:]) or "(no output)")[-n:]
+                    def _tail(out: str, err: str, n: int = 180) -> str:
+                        """Whichever stream is non-empty wins. Strips ANSI/blank lines."""
+                        body = (err.strip() or out.strip() or "").splitlines()
+                        body = [ln for ln in body if ln.strip()]
+                        return (" │ ".join(body[-3:]) or "(no output)")[-n:]
 
-                r1 = subprocess.run(
-                    [sys.executable, "-m", "ingest.parse_pdfs"],
-                    capture_output=True, text=True, cwd=str(RAG_ROOT),
-                )
-                if r1.returncode != 0:
-                    _ingest_state["last_returncode"] = r1.returncode
-                    _ingest_state["message"] = f"parse_pdfs failed (exit {r1.returncode}): {_tail(r1.stdout, r1.stderr)}"
-                else:
-                    r2 = subprocess.run(
-                        [sys.executable, "-m", "ingest.build_index"],
+                    r1 = subprocess.run(
+                        [sys.executable, "-m", "ingest.parse_pdfs"],
                         capture_output=True, text=True, cwd=str(RAG_ROOT),
                     )
-                    _ingest_state["last_returncode"] = r2.returncode
-                    if r2.returncode != 0:
-                        _ingest_state["message"] = f"build_index failed (exit {r2.returncode}): {_tail(r2.stdout, r2.stderr)}"
+                    if r1.returncode != 0:
+                        _ingest_state["last_returncode"] = r1.returncode
+                        _ingest_state["message"] = f"parse_pdfs failed (exit {r1.returncode}): {_tail(r1.stdout, r1.stderr)}"
                     else:
-                        _ingest_state["message"] = f"Indexed {len(new_ids)} paper(s) ✓"
-                        # Generate summaries for the newly indexed papers in the
-                        # background so they're ready when the user opens a paper.
-                        _summary_executor.submit(_run_summary_build)
-                _ingest_state["running"] = False
+                        r2 = subprocess.run(
+                            [sys.executable, "-m", "ingest.build_index"],
+                            capture_output=True, text=True, cwd=str(RAG_ROOT),
+                        )
+                        _ingest_state["last_returncode"] = r2.returncode
+                        if r2.returncode != 0:
+                            _ingest_state["message"] = f"build_index failed (exit {r2.returncode}): {_tail(r2.stdout, r2.stderr)}"
+                        else:
+                            _ingest_state["message"] = f"Indexed {len(new_ids)} paper(s) ✓"
+                            # Generate summaries for the newly indexed papers in the
+                            # background so they're ready when the user opens a paper.
+                            _summary_executor.submit(_run_summary_build)
+                finally:
+                    _ingest_state["running"] = False
+                    _index_run_lock.release()
             else:
                 _ingest_state["message"] = f"Up to date ({len(pdf_files)} PDFs)"
 
@@ -1135,12 +1144,24 @@ async def api_papers_upload(files: list[UploadFile] = File(...)):
     for upload in files:
         result: dict = {"filename": upload.filename, "ok": False}
         try:
-            data = await upload.read()
+            # Read in chunks and stop at the cap — reading the whole upload
+            # first buffers arbitrarily large files in RAM before the check.
+            chunks: list[bytes] = []
+            total = 0
+            while True:
+                chunk = await upload.read(1024 * 1024)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > MAX_BYTES:
+                    break
+                chunks.append(chunk)
+            if total > MAX_BYTES:
+                result["error"] = f"file > {MAX_BYTES // 1024 // 1024} MB cap"
+                results.append(result); continue
+            data = b"".join(chunks)
             if not data:
                 result["error"] = "empty file"
-                results.append(result); continue
-            if len(data) > MAX_BYTES:
-                result["error"] = f"file > {MAX_BYTES // 1024 // 1024} MB cap"
                 results.append(result); continue
             if not data.startswith(b"%PDF-"):
                 result["error"] = "not a valid PDF (missing %PDF- magic bytes)"
@@ -1202,7 +1223,10 @@ async def api_upload(file: UploadFile = File(...)):
     filename = file.filename or "upload"
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
     IMAGE_EXTS = {"jpg", "jpeg", "png", "gif", "webp", "bmp"}
-    data = await file.read()
+    MAX_ATTACH = 50 * 1024 * 1024  # chat attachments are read (and for images
+    data = await file.read(MAX_ATTACH + 1)  # base64'd) fully into RAM — cap them
+    if len(data) > MAX_ATTACH:
+        raise HTTPException(413, f"attachment > {MAX_ATTACH // 1024 // 1024} MB cap")
 
     if ext in IMAGE_EXTS:
         b64 = base64.b64encode(data).decode("ascii")
@@ -1307,6 +1331,10 @@ def api_clip_create(body: ClipCreate):
     pid = (body.paper_id or "").strip()
     if not pid:
         raise HTTPException(400, "paper_id required")
+    if not re.fullmatch(r"[\w\-]+", pid):
+        # Same rule as paper delete — the id becomes a filesystem path segment
+        # under CLIPS_DIR, so anything else enables path traversal.
+        raise HTTPException(400, "invalid paper_id")
     ctype = body.type if body.type in ("figure", "highlight") else "highlight"
     clip_id = _new_clip_id()
     image_path = ""
@@ -1492,6 +1520,9 @@ _ingest_trigger_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix=
 
 def _trigger_ingest_once() -> None:
     """Run parse_pdfs + build_index once, write state. Background-thread safe."""
+    if not _index_run_lock.acquire(blocking=False):
+        _ingest_state.update({"message": "Index run already in progress — waiting"})
+        return
     try:
         if not PAPERS_PDF_DIR.exists():
             _ingest_state.update({"running": False, "message": "Papers folder not found"})
@@ -1533,6 +1564,8 @@ def _trigger_ingest_once() -> None:
         _summary_executor.submit(_run_summary_build)
     except Exception as e:
         _ingest_state.update({"running": False, "message": f"Trigger error: {e}"})
+    finally:
+        _index_run_lock.release()
 
 
 @router.post("/ingest/run")
@@ -1839,6 +1872,16 @@ def init_databases() -> None:
     NOTES_DIR.mkdir(parents=True, exist_ok=True)
     STYLE_DIR.mkdir(parents=True, exist_ok=True)
     _sweep_macos_sidecars()
+    # Create the core rag.db schema (papers/chunks/chunks_fts/chunks_vec) up
+    # front — otherwise search/chat 500 with "no such table" on a fresh
+    # install until the first index run creates it.
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    from ingest.build_index import _init_db as _init_rag_schema
+    conn = _open_db()
+    try:
+        _init_rag_schema(conn)
+    finally:
+        conn.close()
     _mem.init_db()
     _init_graph_db()
     _init_clips_db()
