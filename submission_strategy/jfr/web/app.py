@@ -7,6 +7,7 @@ Or directly: uvicorn jfr.web.app:app --host 127.0.0.1 --port 8765 --reload
 from __future__ import annotations
 
 import json
+import re
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -14,6 +15,7 @@ from typing import Optional
 
 from fastapi import FastAPI, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
@@ -87,6 +89,10 @@ _settings = get_settings()
 _templates_dir = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(_templates_dir))
 templates.env.filters["from_json"] = json.loads
+
+_static_dir = Path(__file__).parent / "static"
+_static_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
 
 
 def _conn():
@@ -1130,6 +1136,311 @@ def experiment_edit_page(request: Request, exp_id: str):
         "manuscripts": [dict(m) for m in manuscripts],
         "statuses": EXPERIMENT_STATUSES,
     })
+
+
+# ── Tasks API ─────────────────────────────────────────────────────────────────
+
+from jfr.db.schema import TASK_STATUSES, TASK_PRIORITIES  # noqa: E402
+
+
+class TaskBody(BaseModel):
+    title: str
+    description_md: Optional[str] = None
+    status: str = "todo"
+    priority: str = "normal"
+    due_date: Optional[str] = None       # YYYY-MM-DD
+    manuscript_id: Optional[str] = None
+    experiment_id: Optional[str] = None
+    tags_json: Optional[str] = "[]"
+
+
+class TaskStatusBody(BaseModel):
+    status: str
+
+
+def _extract_mentions(text: Optional[str]) -> str:
+    """Pull @[Title](mention:type:id) tokens out of free text into a JSON list,
+    so linked entities are queryable without re-parsing the markdown each time."""
+    if not text:
+        return "[]"
+    found = re.findall(r"@\[([^\]]+)\]\(mention:([a-z]+):([^)]+)\)", text)
+    seen, out = set(), []
+    for title, mtype, mid in found:
+        key = (mtype, mid)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({"type": mtype, "id": mid, "title": title})
+    return json.dumps(out)
+
+
+def _task_row_to_dict(row, ms_titles: dict[str, str], exp_names: dict[str, str]) -> dict:
+    d = dict(row)
+    d["manuscript_title"] = ms_titles.get(d.get("manuscript_id"), None)
+    d["experiment_name"] = exp_names.get(d.get("experiment_id"), None)
+    try:    d["tags"] = json.loads(d.get("tags_json") or "[]")
+    except: d["tags"] = []
+    try:    d["mentions"] = json.loads(d.get("mentions_json") or "[]")
+    except: d["mentions"] = []
+    return d
+
+
+def _exp_name_map(conn) -> dict[str, str]:
+    rows = conn.execute("SELECT id, name FROM experiment").fetchall()
+    return {r["id"]: r["name"] for r in rows}
+
+
+@app.get("/api/tasks")
+def list_tasks_api(status: Optional[str] = None, manuscript_id: Optional[str] = None,
+                    experiment_id: Optional[str] = None):
+    conn = _conn()
+    sql = "SELECT * FROM task WHERE 1=1"
+    params: list = []
+    if status:
+        sql += " AND status = ?"; params.append(status)
+    if manuscript_id:
+        sql += " AND manuscript_id = ?"; params.append(manuscript_id)
+    if experiment_id:
+        sql += " AND experiment_id = ?"; params.append(experiment_id)
+    sql += " ORDER BY (due_date IS NULL), due_date ASC, position ASC, created_at DESC"
+    rows = conn.execute(sql, params).fetchall()
+    ms_titles, exp_names = _ms_title_map(conn), _exp_name_map(conn)
+    return [_task_row_to_dict(r, ms_titles, exp_names) for r in rows]
+
+
+@app.get("/api/tasks/{task_id}")
+def get_task_api(task_id: str):
+    conn = _conn()
+    row = conn.execute("SELECT * FROM task WHERE id=?", (task_id,)).fetchone()
+    if not row:
+        raise HTTPException(404, "task not found")
+    return _task_row_to_dict(row, _ms_title_map(conn), _exp_name_map(conn))
+
+
+def _next_task_id(conn) -> str:
+    row = conn.execute("SELECT id FROM task ORDER BY rowid DESC LIMIT 1").fetchone()
+    if not row:
+        return "task_001"
+    last = row["id"]
+    if last.startswith("task_") and last[5:].isdigit():
+        return f"task_{int(last[5:]) + 1:03d}"
+    return f"task_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+
+
+@app.post("/api/tasks", status_code=201)
+def create_task_api(body: TaskBody):
+    if body.status not in TASK_STATUSES:
+        raise HTTPException(422, f"invalid status: {body.status!r}")
+    if body.priority not in TASK_PRIORITIES:
+        raise HTTPException(422, f"invalid priority: {body.priority!r}")
+    if not body.title.strip():
+        raise HTTPException(422, "title is required")
+    conn = _conn()
+    task_id = _next_task_id(conn)
+    now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+    completed_at = now if body.status == "done" else None
+    conn.execute(
+        """INSERT INTO task
+           (id, title, description_md, status, priority, due_date,
+            manuscript_id, experiment_id, mentions_json, tags_json,
+            created_at, updated_at, completed_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (task_id, body.title.strip(), body.description_md, body.status, body.priority,
+         body.due_date, body.manuscript_id, body.experiment_id,
+         _extract_mentions(body.description_md), body.tags_json or "[]",
+         now, now, completed_at),
+    )
+    conn.commit()
+    return {"id": task_id}
+
+
+@app.put("/api/tasks/{task_id}")
+def update_task_api(task_id: str, body: TaskBody):
+    if body.status not in TASK_STATUSES:
+        raise HTTPException(422, f"invalid status: {body.status!r}")
+    if body.priority not in TASK_PRIORITIES:
+        raise HTTPException(422, f"invalid priority: {body.priority!r}")
+    if not body.title.strip():
+        raise HTTPException(422, "title is required")
+    conn = _conn()
+    row = conn.execute("SELECT status, completed_at FROM task WHERE id=?", (task_id,)).fetchone()
+    if not row:
+        raise HTTPException(404, "task not found")
+    now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+    completed_at = row["completed_at"]
+    if body.status == "done" and row["status"] != "done":
+        completed_at = now
+    elif body.status != "done":
+        completed_at = None
+    conn.execute(
+        """UPDATE task SET
+              title=?, description_md=?, status=?, priority=?, due_date=?,
+              manuscript_id=?, experiment_id=?, mentions_json=?, tags_json=?,
+              updated_at=?, completed_at=?
+           WHERE id=?""",
+        (body.title.strip(), body.description_md, body.status, body.priority, body.due_date,
+         body.manuscript_id, body.experiment_id, _extract_mentions(body.description_md),
+         body.tags_json or "[]", now, completed_at, task_id),
+    )
+    conn.commit()
+    return {"ok": True}
+
+
+@app.patch("/api/tasks/{task_id}/status")
+def update_task_status_api(task_id: str, body: TaskStatusBody):
+    """Quick status change — used by the board's drag/column-move actions."""
+    if body.status not in TASK_STATUSES:
+        raise HTTPException(422, f"invalid status: {body.status!r}")
+    conn = _conn()
+    row = conn.execute("SELECT status, completed_at FROM task WHERE id=?", (task_id,)).fetchone()
+    if not row:
+        raise HTTPException(404, "task not found")
+    now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+    completed_at = now if (body.status == "done" and row["status"] != "done") else (
+        None if body.status != "done" else row["completed_at"]
+    )
+    conn.execute(
+        "UPDATE task SET status=?, updated_at=?, completed_at=? WHERE id=?",
+        (body.status, now, completed_at, task_id),
+    )
+    conn.commit()
+    return {"ok": True}
+
+
+@app.delete("/api/tasks/{task_id}")
+def delete_task_api(task_id: str):
+    conn = _conn()
+    res = conn.execute("DELETE FROM task WHERE id=?", (task_id,))
+    conn.commit()
+    if res.rowcount == 0:
+        raise HTTPException(404, "task not found")
+    return {"ok": True}
+
+
+# ── Tasks: page routes ────────────────────────────────────────────────────────
+
+@app.get("/tasks", response_class=HTMLResponse)
+def tasks_page(request: Request, open: Optional[str] = None):
+    conn = _conn()
+    manuscripts = conn.execute("SELECT id, title FROM manuscript ORDER BY title").fetchall()
+    experiments = conn.execute("SELECT id, name FROM experiment ORDER BY name").fetchall()
+    return templates.TemplateResponse(request, "tasks.html", {
+        "manuscripts": [dict(m) for m in manuscripts],
+        "experiments": [dict(e) for e in experiments],
+        "statuses": TASK_STATUSES,
+        "priorities": TASK_PRIORITIES,
+        "open_task_id": open or "",
+    })
+
+
+@app.get("/tasks/{task_id}")
+def task_detail_redirect(task_id: str):
+    """Tasks are a single-page board; deep links (e.g. from @mention chips)
+    land here and bounce to the board with that task pre-opened."""
+    return RedirectResponse(f"/tasks?open={task_id}")
+
+
+# ── @-mentions: unified search across jfr + RAG entities ────────────────────
+
+@app.get("/api/mentions/search")
+def mentions_search_api(q: str = Query(""), limit: int = Query(6, ge=1, le=20)):
+    """Powers the '@' autocomplete: manuscripts, experiments, tasks (this DB),
+    plus papers, memories, notes (RAG side — best-effort, RAG may not be up)."""
+    q = (q or "").strip()
+    like = f"%{q}%"
+    results: list[dict] = []
+
+    conn = _conn()
+    try:
+        def _rows(table, id_col, title_col, order_col):
+            if q:
+                return conn.execute(
+                    f"SELECT {id_col} AS id, {title_col} AS title FROM {table} "
+                    f"WHERE {title_col} LIKE ? ORDER BY {order_col} DESC LIMIT ?",
+                    (like, limit),
+                ).fetchall()
+            return conn.execute(
+                f"SELECT {id_col} AS id, {title_col} AS title FROM {table} "
+                f"ORDER BY {order_col} DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+
+        for r in _rows("manuscript", "id", "title", "updated_at"):
+            results.append({"type": "manuscript", "id": r["id"], "title": r["title"]})
+        for r in _rows("experiment", "id", "name", "created_at"):
+            results.append({"type": "experiment", "id": r["id"], "title": r["title"]})
+        for r in _rows("task", "id", "title", "created_at"):
+            results.append({"type": "task", "id": r["id"], "title": r["title"]})
+    except Exception as e:
+        print(f"[mentions] jfr search error: {e}")
+
+    # RAG side is optional — a fresh/degraded RAG state must not break the
+    # mention widget for manuscripts/experiments/tasks.
+    try:
+        from jfr.web import rag_routes as _rr
+        if _rr.DB_PATH.exists():
+            rconn = _rr._open_db()
+            try:
+                if q:
+                    prows = rconn.execute(
+                        "SELECT paper_id, title FROM papers WHERE title LIKE ? "
+                        "ORDER BY rowid DESC LIMIT ?", (like, limit),
+                    ).fetchall()
+                else:
+                    prows = rconn.execute(
+                        "SELECT paper_id, title FROM papers ORDER BY rowid DESC LIMIT ?", (limit,),
+                    ).fetchall()
+                for pid, title in prows:
+                    results.append({"type": "paper", "id": pid, "title": title or pid})
+            finally:
+                rconn.close()
+    except Exception as e:
+        print(f"[mentions] paper search error: {e}")
+
+    try:
+        from jfr.web import rag_routes as _rr
+        ql = q.lower()
+        mem_hits = 0
+        for m in _rr._mem.get_all_memories(limit=300):
+            if mem_hits >= limit:
+                break
+            content = m.get("content", "")
+            if not q or ql in content.lower():
+                results.append({
+                    "type": "memory", "id": m["memory_id"],
+                    "title": content[:80] + ("…" if len(content) > 80 else ""),
+                })
+                mem_hits += 1
+    except Exception as e:
+        print(f"[mentions] memory search error: {e}")
+
+    try:
+        from jfr.web import rag_routes as _rr
+        _rr.NOTES_DIR.mkdir(parents=True, exist_ok=True)
+        note_hits = 0
+        files = sorted(_rr.NOTES_DIR.glob("*.md"), key=lambda x: x.stat().st_mtime, reverse=True)
+        for f in files:
+            if note_hits >= limit:
+                break
+            if f.name.startswith("._"):
+                continue
+            title = f.stem
+            try:
+                head = f.read_text(encoding="utf-8", errors="replace")[:500]
+            except Exception:
+                continue
+            for line in head.split("\n"):
+                if line.startswith("title:"):
+                    title = line[6:].strip().strip("\"'"); break
+                if line.startswith("# "):
+                    title = line[2:].strip(); break
+            if not q or q.lower() in title.lower():
+                results.append({"type": "note", "id": f.stem, "title": title})
+                note_hits += 1
+    except Exception as e:
+        print(f"[mentions] note search error: {e}")
+
+    return {"results": results[:40]}
 
 
 @app.get("/schedule", response_class=HTMLResponse)

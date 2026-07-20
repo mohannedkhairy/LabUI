@@ -46,7 +46,7 @@
     <div id="reader-edit-wrap" class="flex-1 flex flex-col overflow-hidden" style="display:none">
       <input id="edit-title" placeholder="Note title"
              class="w-full bg-transparent border-b border-ink-200 dark:border-ink-800 px-6 py-3 text-sm font-semibold outline-none">
-      <textarea id="edit-content" placeholder="Markdown…"
+      <textarea id="edit-content" data-mentions="1" placeholder="Markdown… type @ to link a paper, experiment, task, manuscript, note, or memory"
                 class="flex-1 bg-transparent font-mono text-sm px-6 py-3 outline-none resize-none"></textarea>
       <div class="border-t border-ink-200 dark:border-ink-800 px-5 py-2.5 flex items-center gap-2">
         <button onclick="saveNote()" class="bg-brand-600 hover:bg-brand-700 text-white text-xs font-medium px-4 py-1.5 rounded-md">Save as new note</button>
@@ -78,7 +78,12 @@ let currentRawContent = '';
 let mdReady = false;
 try { marked.use({ gfm: true, breaks: true }); if (window.markedKatex) marked.use(markedKatex({ throwOnError: false })); mdReady = true; } catch (e) {}
 
-document.addEventListener('DOMContentLoaded', loadNotes);
+document.addEventListener('DOMContentLoaded', async () => {
+  await loadNotes();
+  // Deep link from an @mention chip: /research/notes?open=<id>
+  const openId = new URLSearchParams(location.search).get('open');
+  if (openId) openNote(openId);
+});
 
 async function loadNotes() {
   const list = document.getElementById('notes-list');
@@ -150,7 +155,8 @@ function showReader(title, content) {
   const {meta} = parseFrontmatter(currentRawContent);
   document.getElementById('reader-meta').textContent = meta;
   document.getElementById('reader-edit').textContent = 'Edit';
-  const html = mdReady ? marked.parse(window.normalizeMath ? window.normalizeMath(content) : content) : `<pre>${escapeHtml(content)}</pre>`;
+  let html = mdReady ? marked.parse(window.normalizeMath ? window.normalizeMath(content) : content) : `<pre>${escapeHtml(content)}</pre>`;
+  if (window.renderMentionsHtml) html = renderMentionsHtml(html);
   document.getElementById('reader-content').innerHTML = html;
 }
 
