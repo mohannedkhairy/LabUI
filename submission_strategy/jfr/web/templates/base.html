@@ -118,6 +118,39 @@
     .dark .cite-chip { background: #1d2050; color: #a3b1ff; }
     .dark .cite-chip:hover { background: #2e3573; }
 
+    /* @-mention chips (rendered from @[Title](mention:type:id) tokens) */
+    .mention-chip {
+      display: inline-flex; align-items: center; gap: 3px;
+      background: #dcfce7; color: #15803d; font-weight: 600;
+      font-size: 0.85em; padding: 1px 7px; border-radius: 6px; margin: 0 1px;
+      cursor: pointer; vertical-align: baseline; line-height: 1.4;
+    }
+    .mention-chip:hover { background: #bbf7d0; }
+    .dark .mention-chip { background: #052e16; color: #6ee7b7; }
+    .dark .mention-chip:hover { background: #064e2e; }
+
+    /* @-mention autocomplete dropdown (positioned via JS, appended to body) */
+    .mention-dropdown {
+      position: fixed; z-index: 200; min-width: 240px; max-width: 340px;
+      background: #ffffff; border: 1px solid #dde1e8; border-radius: 12px;
+      box-shadow: 0 10px 30px -10px rgba(15,19,36,0.25);
+      padding: 6px; max-height: 260px; overflow-y: auto;
+    }
+    .dark .mention-dropdown {
+      background: #1c2230; border-color: #2a3142;
+      box-shadow: 0 10px 30px -10px rgba(0,0,0,0.6);
+    }
+    .mention-item {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 8px; border-radius: 8px; cursor: pointer; font-size: 13px;
+    }
+    .mention-item.active, .mention-item:hover { background: #eef1ff; }
+    .dark .mention-item.active, .dark .mention-item:hover { background: #1d2050; }
+    .mention-item-icon { flex-shrink: 0; }
+    .mention-item-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .mention-item-type { flex-shrink: 0; font-size: 10px; color: #8b94a6; text-transform: uppercase; letter-spacing: 0.04em; }
+    .mention-empty { padding: 10px; font-size: 12px; color: #8b94a6; text-align: center; }
+
     .spinner {
       width: 14px; height: 14px; border: 2px solid rgba(120,130,150,0.3);
       border-top-color: #5e6bf0; border-radius: 50%;
@@ -277,6 +310,7 @@
 
     {% set workspace_nav = [
       ('/',             'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6', 'Dashboard'),
+      ('/tasks',        'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01', 'Tasks'),
       ('/manuscripts',  'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', 'Manuscripts'),
       ('/experiments',  'M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z', 'Experiments'),
       ('/schedule',     'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z', 'Schedule'),
@@ -522,6 +556,9 @@
       .replace(/\\\(([\s\S]+?)\\\)/g, function (_, x) { return '$' + x + '$'; });
   };
 </script>
+
+<!-- @-mentions: attachMentions(), renderMentionsHtml/Plain(), openMention() -->
+<script src="/static/mentions.js"></script>
 
 {% block scripts %}{% endblock %}
 </body>

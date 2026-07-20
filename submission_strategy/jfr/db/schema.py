@@ -125,9 +125,33 @@ CREATE INDEX IF NOT EXISTS idx_experiment_manuscript    ON experiment(manuscript
 CREATE INDEX IF NOT EXISTS idx_experiment_status        ON experiment(status);
 CREATE INDEX IF NOT EXISTS idx_experiment_ran_on        ON experiment(ran_on);
 CREATE INDEX IF NOT EXISTS idx_experiment_scheduled_for ON experiment(scheduled_for);
+
+CREATE TABLE IF NOT EXISTS task (
+    id              TEXT PRIMARY KEY,
+    title           TEXT NOT NULL,
+    description_md  TEXT,
+    status          TEXT NOT NULL DEFAULT 'todo',
+    priority        TEXT NOT NULL DEFAULT 'normal',
+    due_date        TEXT,
+    manuscript_id   TEXT REFERENCES manuscript(id) ON DELETE SET NULL,
+    experiment_id   TEXT REFERENCES experiment(id) ON DELETE SET NULL,
+    mentions_json   TEXT NOT NULL DEFAULT '[]',
+    tags_json       TEXT NOT NULL DEFAULT '[]',
+    position        INTEGER NOT NULL DEFAULT 0,
+    created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    updated_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    completed_at    TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_task_status       ON task(status);
+CREATE INDEX IF NOT EXISTS idx_task_due_date     ON task(due_date);
+CREATE INDEX IF NOT EXISTS idx_task_manuscript   ON task(manuscript_id);
+CREATE INDEX IF NOT EXISTS idx_task_experiment   ON task(experiment_id);
 """
 
 EXPERIMENT_STATUSES = ["planned", "in_progress", "done", "failed", "abandoned"]
+
+TASK_STATUSES  = ["todo", "in_progress", "done"]
+TASK_PRIORITIES = ["low", "normal", "high"]
 
 VALID_TRANSITIONS: dict[str, list[str]] = {
     "drafting":                   ["internal_review", "withdrawn"],
