@@ -18,6 +18,18 @@
     })();
   </script>
 
+  <!-- Pre-paint color theme: same early-set pattern as the dark/light toggle above,
+       so the accent color is correct on first paint instead of flashing sage
+       then switching. -->
+  <script>
+    (function () {
+      try {
+        const saved = localStorage.getItem('labui-color-theme');
+        if (saved) document.documentElement.setAttribute('data-color-theme', saved);
+      } catch (e) {}
+    })();
+  </script>
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -63,21 +75,32 @@
               800: '#1c2230',  900: '#12161f',
               950: '#0a0d14',
             },
+            // `brand` resolves through CSS custom properties (--brand-50…950,
+            // defined in the <style> block below and swapped per theme via
+            // [data-color-theme]) instead of static hex. Tailwind bakes
+            // `rgb(var(--brand-500) / <alpha-value>)` into the compiled
+            // `.bg-brand-500` rule; the browser resolves the variable at PAINT
+            // time, so switching the theme attribute updates every brand-*
+            // class app-wide instantly — no Tailwind recompile, no page reload.
             brand: {
-              50:  '#f1f7f2',  100: '#e0eee3',  200: '#c2ddc8',
-              300: '#9bc5a5',  400: '#72a97e',  500: '#4f8c5c',
-              600: '#3f7449',  700: '#345e3c',  800: '#2b4d32',
-              900: '#23402a',  950: '#14261a',
+              50:  'rgb(var(--brand-50) / <alpha-value>)',   100: 'rgb(var(--brand-100) / <alpha-value>)',
+              200: 'rgb(var(--brand-200) / <alpha-value>)',  300: 'rgb(var(--brand-300) / <alpha-value>)',
+              400: 'rgb(var(--brand-400) / <alpha-value>)',  500: 'rgb(var(--brand-500) / <alpha-value>)',
+              600: 'rgb(var(--brand-600) / <alpha-value>)',  700: 'rgb(var(--brand-700) / <alpha-value>)',
+              800: 'rgb(var(--brand-800) / <alpha-value>)',  900: 'rgb(var(--brand-900) / <alpha-value>)',
+              950: 'rgb(var(--brand-950) / <alpha-value>)',
             },
-            // Same muted-sage scale mirrored onto Tailwind's stock `indigo` name —
+            // Same live-theme scale mirrored onto Tailwind's stock `indigo` name —
             // several older templates use `indigo-*` classes directly instead of
-            // the custom `brand` token; this keeps the whole app on one accent
-            // color without touching those templates.
+            // the custom `brand` token; this keeps the whole app on one
+            // switchable accent color without touching those templates.
             indigo: {
-              50:  '#f1f7f2',  100: '#e0eee3',  200: '#c2ddc8',
-              300: '#9bc5a5',  400: '#72a97e',  500: '#4f8c5c',
-              600: '#3f7449',  700: '#345e3c',  800: '#2b4d32',
-              900: '#23402a',  950: '#14261a',
+              50:  'rgb(var(--brand-50) / <alpha-value>)',   100: 'rgb(var(--brand-100) / <alpha-value>)',
+              200: 'rgb(var(--brand-200) / <alpha-value>)',  300: 'rgb(var(--brand-300) / <alpha-value>)',
+              400: 'rgb(var(--brand-400) / <alpha-value>)',  500: 'rgb(var(--brand-500) / <alpha-value>)',
+              600: 'rgb(var(--brand-600) / <alpha-value>)',  700: 'rgb(var(--brand-700) / <alpha-value>)',
+              800: 'rgb(var(--brand-800) / <alpha-value>)',  900: 'rgb(var(--brand-900) / <alpha-value>)',
+              950: 'rgb(var(--brand-950) / <alpha-value>)',
             },
           },
           boxShadow: {
@@ -93,6 +116,31 @@
   <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
 
   <style>
+    /* ── Color themes ──────────────────────────────────────────────────────
+       Each theme is a full 50→950 ramp of "R G B" triples (space-separated,
+       no commas — Tailwind's `rgb(var(--x) / <alpha-value>)` pattern needs
+       that exact form so opacity modifiers like bg-brand-500/50 work). The
+       default (:root) is sage/green; [data-color-theme] overrides it. Adding
+       a theme later is just one more block + one more picker dot. */
+    :root, [data-color-theme="sage"] {
+      --brand-50:  241 247 242;  --brand-100: 224 238 227;  --brand-200: 194 221 200;
+      --brand-300: 155 197 165;  --brand-400: 114 169 126;  --brand-500: 79 140 92;
+      --brand-600: 63 116 73;    --brand-700: 52 94 60;     --brand-800: 43 77 50;
+      --brand-900: 35 64 42;     --brand-950: 20 38 26;
+    }
+    [data-color-theme="meadow-blue"] {
+      --brand-50:  240 245 252;  --brand-100: 222 233 248;  --brand-200: 188 211 241;
+      --brand-300: 143 181 230;  --brand-400: 94 147 214;   --brand-500: 63 116 192;
+      --brand-600: 49 93 160;    --brand-700: 41 75 128;    --brand-800: 34 60 102;
+      --brand-900: 28 49 83;     --brand-950: 16 27 48;
+    }
+    [data-color-theme="amber"] {
+      --brand-50:  251 243 234;  --brand-100: 245 228 205;  --brand-200: 234 202 159;
+      --brand-300: 220 172 110;  --brand-400: 201 143 69;   --brand-500: 176 116 48;
+      --brand-600: 147 94 38;    --brand-700: 118 75 33;    --brand-800: 96 61 30;
+      --brand-900: 79 52 28;     --brand-950: 43 28 15;
+    }
+
     html, body { height: 100%; }
     body { font-family: 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
     [x-cloak] { display: none !important; }
@@ -129,23 +177,23 @@
     .md-body pre { background: rgba(120,130,150,0.10); padding: 12px; border-radius: 8px;
                    overflow-x: auto; margin: 0.6em 0; font-size: 0.85em; }
     .md-body pre code { background: transparent; padding: 0; }
-    .md-body a { color: #4f8c5c; text-decoration: underline; }
-    .dark .md-body a { color: #9bc5a5; }
+    .md-body a { color: rgb(var(--brand-500)); text-decoration: underline; }
+    .dark .md-body a { color: rgb(var(--brand-300)); }
     .md-body ul, .md-body ol { padding-left: 1.25em; margin: 0.5em 0; }
     .md-body h2 { font-size: 1.05rem; font-weight: 600; margin-top: 1em; }
     .md-body h3 { font-size: 0.95rem; font-weight: 600; margin-top: 0.8em; }
-    .md-body blockquote { border-left: 3px solid #c2ddc8; padding-left: 10px; color: #5a6478; margin: 0.5em 0; }
-    .dark .md-body blockquote { border-color: #2b4d32; color: #bfc6d2; }
+    .md-body blockquote { border-left: 3px solid rgb(var(--brand-200)); padding-left: 10px; color: #5a6478; margin: 0.5em 0; }
+    .dark .md-body blockquote { border-color: rgb(var(--brand-800)); color: #bfc6d2; }
 
     .cite-chip {
       display: inline-flex; align-items: center; gap: 4px;
-      background: #f1f7f2; color: #345e3c; font-family: 'IBM Plex Mono', monospace;
+      background: rgb(var(--brand-50)); color: rgb(var(--brand-700)); font-family: 'IBM Plex Mono', monospace;
       font-size: 11px; padding: 1px 6px; border-radius: 4px; margin: 0 1px; cursor: pointer;
       vertical-align: baseline; line-height: 1.3;
     }
-    .cite-chip:hover { background: #c2ddc8; }
-    .dark .cite-chip { background: #14261a; color: #9bc5a5; }
-    .dark .cite-chip:hover { background: #23402a; }
+    .cite-chip:hover { background: rgb(var(--brand-200)); }
+    .dark .cite-chip { background: rgb(var(--brand-950)); color: rgb(var(--brand-300)); }
+    .dark .cite-chip:hover { background: rgb(var(--brand-900)); }
 
     /* @-mention chips (rendered from @[Title](mention:type:id) tokens) */
     .mention-chip {
@@ -173,8 +221,8 @@
       display: flex; align-items: center; gap: 8px;
       padding: 6px 8px; border-radius: 8px; cursor: pointer; font-size: 13px;
     }
-    .mention-item.active, .mention-item:hover { background: #f1f7f2; }
-    .dark .mention-item.active, .dark .mention-item:hover { background: #14261a; }
+    .mention-item.active, .mention-item:hover { background: rgb(var(--brand-50)); }
+    .dark .mention-item.active, .dark .mention-item:hover { background: rgb(var(--brand-950)); }
     .mention-item-icon { flex-shrink: 0; }
     .mention-item-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .mention-item-type { flex-shrink: 0; font-size: 10px; color: #8b94a6; text-transform: uppercase; letter-spacing: 0.04em; }
@@ -182,10 +230,19 @@
 
     .spinner {
       width: 14px; height: 14px; border: 2px solid rgba(120,130,150,0.3);
-      border-top-color: #4f8c5c; border-radius: 50%;
+      border-top-color: rgb(var(--brand-500)); border-radius: 50%;
       animation: spin 0.7s linear infinite; display: inline-block;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Color-theme picker dots (sidebar footer) */
+    .theme-dot {
+      cursor: pointer; border: 2px solid transparent; transition: transform 0.15s ease, border-color 0.15s ease;
+      box-shadow: 0 0 0 1px rgba(15,19,36,0.08) inset;
+    }
+    .theme-dot:hover { transform: scale(1.15); }
+    .theme-dot.active { border-color: #5a6478; }
+    .dark .theme-dot.active { border-color: #dde1e8; }
 
     /* ── Meadow — tile primitives ── */
     .tile {
@@ -204,23 +261,23 @@
     /* Inverted hero — a sage-tinted card + deep-sage text instead of a dark
        gradient. Same focal hierarchy, calmer mood. */
     .tile-inverted {
-      background: linear-gradient(135deg, #f1f7f2 0%, #e0eee3 100%);
-      color: #23402a;
+      background: linear-gradient(135deg, rgb(var(--brand-50)) 0%, rgb(var(--brand-100)) 100%);
+      color: rgb(var(--brand-900));
       border-radius: 24px;
       padding: 24px 26px;
-      box-shadow: 0 1px 2px rgba(15, 19, 36, 0.03), 0 16px 48px -20px rgba(79, 140, 92, 0.25);
+      box-shadow: 0 1px 2px rgba(15, 19, 36, 0.03), 0 16px 48px -20px rgb(var(--brand-500) / 0.25);
       position: relative; overflow: hidden;
     }
     .tile-inverted::after {
       content: ""; position: absolute; right: -60px; top: -60px;
       width: 220px; height: 220px; border-radius: 50%;
-      background: radial-gradient(circle, rgba(79, 140, 92,0.18), transparent 70%);
+      background: radial-gradient(circle, rgb(var(--brand-500) / 0.18), transparent 70%);
       pointer-events: none;
     }
     .dark .tile-inverted {
-      background: linear-gradient(135deg, #14261a 0%, #2b4d32 100%);
-      color: #f1f7f2;
-      box-shadow: 0 16px 48px -20px rgba(114, 169, 126, 0.45);
+      background: linear-gradient(135deg, rgb(var(--brand-950)) 0%, rgb(var(--brand-800)) 100%);
+      color: rgb(var(--brand-50));
+      box-shadow: 0 16px 48px -20px rgb(var(--brand-400) / 0.45);
     }
 
     .stat-label   { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #8b94a6; }
@@ -235,21 +292,22 @@
       background: #eef0f4; color: #5a6478;
     }
     .dark .chip { background: #2a3142; color: #bfc6d2; }
-    .chip-brand    { background: #f1f7f2; color: #345e3c; }
+    .chip-brand    { background: rgb(var(--brand-50)); color: rgb(var(--brand-700)); }
     .chip-success  { background: #dcfce7; color: #15803d; }
     .chip-warn     { background: #fef3c7; color: #b45309; }
     .chip-danger   { background: #ffe4e6; color: #be123c; }
-    .dark .chip-brand    { background: #14261a; color: #9bc5a5; }
+    .dark .chip-brand    { background: rgb(var(--brand-950)); color: rgb(var(--brand-300)); }
     .dark .chip-success  { background: #052e16; color: #6ee7b7; }
     .dark .chip-warn     { background: #451a03; color: #fcd34d; }
     .dark .chip-danger   { background: #4c0519; color: #fda4af; }
 
     .sparkline { height: 30px; display: block; }
 
-    /* Meadow — soft sage-tinted wash behind the rounded app shell, evoking a
-       quiet notebook on a desk rather than dense software chrome. */
-    body { background: linear-gradient(160deg, #eaf5ec 0%, #e4f0e8 45%, #edf6ef 100%); }
-    .dark body { background: linear-gradient(160deg, #0a140d 0%, #0c1811 55%, #0a130e 100%); }
+    /* Meadow — soft tinted wash behind the rounded app shell (follows the
+       active color theme), evoking a quiet notebook on a desk rather than
+       dense software chrome. */
+    body { background: linear-gradient(160deg, rgb(var(--brand-100)) 0%, rgb(var(--brand-50)) 45%, rgb(var(--brand-100)) 100%); }
+    .dark body { background: linear-gradient(160deg, rgb(var(--brand-950)) 0%, rgb(var(--brand-900)) 55%, rgb(var(--brand-950)) 100%); }
 
     /* The big rounded outer shell that wraps sidebar + main */
     .app-shell {
@@ -263,7 +321,43 @@
       box-shadow: 0 1px 2px rgba(0,0,0,0.5), 0 30px 80px -30px rgba(0,0,0,0.7);
     }
 
-    /* Nav item — active item is a popped sage card */
+    /* ── .glass-panel: colored grain wash + frosted glass ─────────────────────
+       Reusable surface treatment — the app nav sidebar and the Notes folder
+       panel both use it. A visible fine-grain noise texture (an inline SVG
+       feTurbulence filter, tiled) blended over the tinted gradient — the
+       "powder sprinkled on color" look. Painted on ::before (behind the
+       panel's real content in normal paint order, no z-index juggling
+       needed) so it never affects readability or click targets. */
+    .glass-panel {
+      position: relative; overflow: hidden;
+      background: linear-gradient(165deg, rgb(var(--brand-100)) 0%, rgb(var(--brand-50)) 55%, rgb(var(--brand-100)) 100%);
+    }
+    .dark .glass-panel {
+      background: linear-gradient(165deg, rgb(var(--brand-900)) 0%, rgb(var(--brand-950)) 55%, rgb(var(--brand-900)) 100%);
+    }
+    .glass-panel::before {
+      content: "";
+      position: absolute; inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg%20xmlns='http:%2F%2Fwww.w3.org%2F2000%2Fsvg'%3E%3Cfilter%20id='n'%3E%3CfeTurbulence%20type='fractalNoise'%20baseFrequency='0.85'%20numOctaves='3'%20stitchTiles='stitch'%2F%3E%3CfeColorMatrix%20type='saturate'%20values='0'%2F%3E%3C%2Ffilter%3E%3Crect%20width='100%25'%20height='100%25'%20filter='url%28%23n%29'%2F%3E%3C%2Fsvg%3E");
+      background-size: 160px 160px;
+      opacity: 0.45;
+      mix-blend-mode: overlay;
+      pointer-events: none;
+    }
+    .dark .glass-panel::before { opacity: 0.3; mix-blend-mode: soft-light; }
+
+    /* Frosted glass surface FOR content sitting on top of a .glass-panel —
+       the search bar / selected row treatment from the reference: still
+       shows the grain through it, just lighter/brighter. */
+    .glass-surface {
+      position: relative; z-index: 1;
+      background: rgb(var(--brand-50) / 0.55);
+      backdrop-filter: blur(10px) saturate(160%);
+      -webkit-backdrop-filter: blur(10px) saturate(160%);
+    }
+    .dark .glass-surface { background: rgb(0 0 0 / 0.18); }
+
+    /* Nav item — active item is a frosted glass pill sitting on the grain wash */
     .nav-link {
       display: flex; align-items: center; gap: 12px;
       padding: 9px 12px;
@@ -271,42 +365,47 @@
       font-size: 13.5px;
       color: #5a6478;
       transition: all 0.18s ease;
+      position: relative; z-index: 1;
     }
     .dark .nav-link { color: #bfc6d2; }
-    .nav-link:hover { background: #f3f4f8; color: #2a3142; }
-    .dark .nav-link:hover { background: #1c2230; color: #eef0f4; }
+    .nav-link:hover { background: rgb(var(--brand-50) / 0.5); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); color: #2a3142; }
+    .dark .nav-link:hover { background: rgb(0 0 0 / 0.2); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); color: #eef0f4; }
 
     .nav-link.active {
-      background: #f1f7f2;
-      color: #345e3c;
+      background: rgb(var(--brand-50) / 0.65);
+      backdrop-filter: blur(10px) saturate(160%);
+      -webkit-backdrop-filter: blur(10px) saturate(160%);
+      color: rgb(var(--brand-700));
       font-weight: 600;
-      box-shadow: 0 4px 12px -4px rgba(79, 140, 92, 0.35);
+      box-shadow: 0 4px 12px -4px rgb(var(--brand-500) / 0.35), inset 0 0 0 1px rgb(var(--brand-200) / 0.6);
     }
     .dark .nav-link.active {
-      background: linear-gradient(135deg, #14261a 0%, #2b4d32 100%);
-      color: #c2ddc8;
-      box-shadow: 0 4px 16px -4px rgba(114, 169, 126, 0.45);
+      background: rgb(var(--brand-800) / 0.55);
+      backdrop-filter: blur(10px) saturate(160%);
+      -webkit-backdrop-filter: blur(10px) saturate(160%);
+      color: rgb(var(--brand-200));
+      box-shadow: 0 4px 16px -4px rgb(var(--brand-400) / 0.4), inset 0 0 0 1px rgb(var(--brand-700) / 0.5);
     }
-    .nav-link.active svg { color: #4f8c5c; }
-    .dark .nav-link.active svg { color: #9bc5a5; }
+    .nav-link.active svg { color: rgb(var(--brand-500)); }
+    .dark .nav-link.active svg { color: rgb(var(--brand-300)); }
 
     /* Dark-mode fallback overrides so existing jfr templates that hardcode
        Tailwind grays remain legible without per-template edits. */
     .dark .bg-white       { background-color: #1c2230 !important; }
     .dark .bg-gray-50     { background-color: #12161f !important; }
     .dark .bg-gray-100    { background-color: #1c2230 !important; }
-    .dark .bg-indigo-50   { background-color: #14261a !important; }
+    .dark .bg-indigo-50   { background-color: rgb(var(--brand-950)) !important; }
     .dark .text-gray-800  { color: #eef0f4 !important; }
     .dark .text-gray-700  { color: #dde1e8 !important; }
     .dark .text-gray-600  { color: #bfc6d2 !important; }
     .dark .text-gray-500  { color: #8b94a6 !important; }
     .dark .text-gray-400  { color: #5a6478 !important; }
-    .dark .text-indigo-900 { color: #c2ddc8 !important; }
-    .dark .text-indigo-700 { color: #9bc5a5 !important; }
-    .dark .text-indigo-600 { color: #72a97e !important; }
+    .dark .text-indigo-900 { color: rgb(var(--brand-200)) !important; }
+    .dark .text-indigo-700 { color: rgb(var(--brand-300)) !important; }
+    .dark .text-indigo-600 { color: rgb(var(--brand-400)) !important; }
     .dark .border-gray-200 { border-color: #2a3142 !important; }
     .dark .border-gray-100 { border-color: #1c2230 !important; }
-    .dark .border-indigo-200 { border-color: #2b4d32 !important; }
+    .dark .border-indigo-200 { border-color: rgb(var(--brand-800)) !important; }
     .dark .divide-gray-100 > :not([hidden]) ~ :not([hidden]) { border-color: #1c2230 !important; }
     .dark .hover\:bg-gray-50:hover { background-color: #12161f !important; }
   </style>
@@ -317,11 +416,11 @@
 <div class="h-full p-3 lg:p-4">
 <div class="app-shell flex h-full">
   <!-- ── Sidebar ────────────────────────────────────────────────── -->
-  <aside class="w-60 flex flex-col flex-shrink-0">
+  <aside class="glass-panel w-60 flex flex-col flex-shrink-0">
     <!-- Brand -->
     <div class="px-5 pt-5 pb-4 flex items-center gap-3">
       <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center text-white"
-           style="box-shadow: 0 6px 16px -4px rgba(79, 140, 92,0.4)" title="LabUI">
+           style="box-shadow: 0 6px 16px -4px rgb(var(--brand-500) / 0.4)" title="LabUI">
         <!-- connected nodes = your literature linked into a knowledge graph -->
         <svg class="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"
              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -418,6 +517,17 @@
         <span id="lbl-papers" class="text-ink-400">—</span>
       </div>
       <div class="flex items-center justify-between gap-2 pt-2 mt-2 border-t border-ink-100 dark:border-ink-800">
+        <span class="text-ink-400">Color</span>
+        <div class="flex items-center gap-1.5" id="color-theme-picker">
+          <button onclick="setColorTheme('sage')" data-theme-dot="sage" title="Sage"
+                  class="theme-dot w-4 h-4 rounded-full" style="background: linear-gradient(135deg, #4f8c5c, #23402a)"></button>
+          <button onclick="setColorTheme('meadow-blue')" data-theme-dot="meadow-blue" title="Meadow blue"
+                  class="theme-dot w-4 h-4 rounded-full" style="background: linear-gradient(135deg, #3f74c0, #1c3153)"></button>
+          <button onclick="setColorTheme('amber')" data-theme-dot="amber" title="Amber"
+                  class="theme-dot w-4 h-4 rounded-full" style="background: linear-gradient(135deg, #b07430, #4f341c)"></button>
+        </div>
+      </div>
+      <div class="flex items-center justify-between gap-2 pt-2 border-t border-ink-100 dark:border-ink-800">
         <a href="/api/docs" class="text-ink-400 hover:text-brand-600 dark:hover:text-brand-300">API docs ↗</a>
         <button onclick="toggleTheme()" class="text-ink-400 hover:text-brand-600 dark:hover:text-brand-300"
                 title="Toggle light/dark">
@@ -435,7 +545,7 @@
     <header class="sticky top-0 z-10 backdrop-blur px-8 py-5 flex items-center justify-between gap-4
                    bg-[#fbfdfb]/[0.82] dark:bg-[#0d1712]/[0.82]">
       <div class="min-w-0">
-        <h1 class="text-2xl font-serif font-semibold text-ink-900 dark:text-ink-50 tracking-tight">{% block heading %}{% endblock %}</h1>
+        <h1 class="text-2xl font-sans font-semibold text-ink-900 dark:text-ink-50 tracking-tight">{% block heading %}{% endblock %}</h1>
         <p class="text-sm text-ink-400 dark:text-ink-500 mt-0.5">{% block subtitle %}{% endblock %}</p>
       </div>
       <div class="flex gap-2 flex-shrink-0">{% block header_actions %}{% endblock %}</div>
@@ -462,6 +572,25 @@
       }
     });
   } catch (e) {}
+
+  // ── Color theme (accent) ────────────────────────────────────────────
+  // Sets [data-color-theme] on <html>, which the CSS custom properties in
+  // <style> react to live — no reload, since every brand-*/indigo-* Tailwind
+  // class and the hand-written accent rules all resolve through the same
+  // --brand-N variables.
+  function setColorTheme(name) {
+    document.documentElement.setAttribute('data-color-theme', name);
+    try { localStorage.setItem('labui-color-theme', name); } catch (e) {}
+    markActiveThemeDot();
+  }
+  function markActiveThemeDot() {
+    let active = document.documentElement.getAttribute('data-color-theme');
+    try { active = active || localStorage.getItem('labui-color-theme') || 'sage'; } catch (e) { active = active || 'sage'; }
+    document.querySelectorAll('.theme-dot').forEach(d => {
+      d.classList.toggle('active', d.dataset.themeDot === active);
+    });
+  }
+  markActiveThemeDot();
 
   // ── Status footer polling ────────────────────────────────────────
   async function refreshStatus() {

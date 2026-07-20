@@ -18,14 +18,14 @@
 <div class="grid grid-cols-12 gap-5 h-[calc(100vh-13rem)]">
 
   <!-- Note list — folder tree -->
-  <aside class="col-span-4 tile tile-flush flex flex-col overflow-hidden">
-    <div class="px-3 pt-3 pb-2">
+  <aside class="glass-panel col-span-4 rounded-xl shadow-soft dark:shadow-soft-dark flex flex-col overflow-hidden">
+    <div class="px-3 pt-3 pb-2 relative z-[1]">
       <div class="relative">
-        <svg class="w-4 h-4 text-ink-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg class="w-4 h-4 text-ink-400 absolute left-3 top-1/2 -translate-y-1/2 z-[1]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
         </svg>
         <input id="note-search" type="text" placeholder="Search notes" oninput="renderSidebar()"
-               class="w-full bg-ink-50 dark:bg-ink-800 rounded-lg pl-9 pr-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-300">
+               class="glass-surface w-full rounded-lg pl-9 pr-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-300">
       </div>
     </div>
     <div id="sidebar-scroll" class="flex-1 overflow-y-auto scroll-thin px-2 pb-3">
@@ -124,25 +124,26 @@
 <style>
   .appearance-btn { background: transparent; color: #5a6478; border: 1px solid #dde1e8; }
   .dark .appearance-btn { color: #bfc6d2; border-color: #2a3142; }
-  .appearance-btn:hover { background: #f1f7f2; }
-  .dark .appearance-btn:hover { background: #14261a; }
-  .appearance-btn.active { background: #f1f7f2; color: #345e3c; border-color: #9bc5a5; font-weight: 600; }
-  .dark .appearance-btn.active { background: #14261a; color: #9bc5a5; border-color: #2b4d32; }
+  .appearance-btn:hover { background: rgb(var(--brand-50)); }
+  .dark .appearance-btn:hover { background: rgb(var(--brand-950)); }
+  .appearance-btn.active { background: rgb(var(--brand-50)); color: rgb(var(--brand-700)); border-color: rgb(var(--brand-300)); font-weight: 600; }
+  .dark .appearance-btn.active { background: rgb(var(--brand-950)); color: rgb(var(--brand-300)); border-color: rgb(var(--brand-800)); }
   .width-focused { max-width: 42rem; }
   .width-comfort { max-width: 56rem; }
   .width-wide    { max-width: 100%;  }
 
-  /* Folder tree */
+  /* Folder tree — hover/selected rows are frosted glass, matching the search
+     bar above (the grain from .glass-panel stays faintly visible through them). */
   .folder-row { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 10px; cursor: pointer; font-size: 13px; }
-  .folder-row:hover { background: #f7f8fa; }
-  .dark .folder-row:hover { background: #1c2230; }
+  .folder-row:hover { background: rgb(var(--brand-50) / 0.55); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+  .dark .folder-row:hover { background: rgb(0 0 0 / 0.18); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
   .folder-row .folder-actions { opacity: 0; transition: opacity 0.15s ease; }
   .folder-row:hover .folder-actions { opacity: 1; }
   .note-row { display: block; width: 100%; text-align: left; padding: 8px 10px; border-radius: 10px; font-size: 13px; transition: all 0.15s ease; }
-  .note-row:hover { background: #f7f8fa; }
-  .dark .note-row:hover { background: #1c2230; }
-  .note-row.active { background: #f1f7f2; border: 1px solid #c2ddc8; }
-  .dark .note-row.active { background: #14261a; border-color: #2b4d32; }
+  .note-row:hover { background: rgb(var(--brand-50) / 0.55); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+  .dark .note-row:hover { background: rgb(0 0 0 / 0.18); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+  .note-row.active { background: rgb(var(--brand-50) / 0.75); backdrop-filter: blur(10px) saturate(160%); -webkit-backdrop-filter: blur(10px) saturate(160%); border: 1px solid rgb(var(--brand-200) / 0.7); }
+  .dark .note-row.active { background: rgb(var(--brand-950) / 0.6); backdrop-filter: blur(10px) saturate(160%); -webkit-backdrop-filter: blur(10px) saturate(160%); border-color: rgb(var(--brand-800) / 0.7); }
 </style>
 <script>
 let currentNoteId = null;
