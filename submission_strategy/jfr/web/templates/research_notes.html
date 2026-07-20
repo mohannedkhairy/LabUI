@@ -55,7 +55,7 @@
     </div>
 
     <!-- Appearance popover (Width / Typeface) — a lighter echo of the reference's "Aa" panel -->
-    <div id="appearance-pop" class="hidden absolute right-5 top-14 z-20 w-64 bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-xl shadow-[0_10px_30px_-10px_rgba(15,19,36,0.25)] dark:shadow-[0_10px_30px_-10px_rgba(0,0,0,0.6)] p-4">
+    <div id="appearance-pop" class="hidden absolute right-5 top-14 z-20 w-72 bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-xl shadow-[0_10px_30px_-10px_rgba(15,19,36,0.25)] dark:shadow-[0_10px_30px_-10px_rgba(0,0,0,0.6)] p-4">
       <div class="flex items-center justify-between mb-3">
         <span class="text-xs font-semibold uppercase tracking-wider text-ink-400">Reading</span>
         <button onclick="toggleAppearance()" class="text-ink-400 hover:text-ink-700 dark:hover:text-ink-200">
@@ -73,8 +73,12 @@
       <div>
         <div class="text-[10px] uppercase tracking-wider text-ink-400 font-semibold mb-1.5">Typeface</div>
         <div class="grid grid-cols-2 gap-1.5" id="face-buttons">
-          <button onclick="setAppearance('face','sans')"  data-f="sans"  class="appearance-btn text-[11px] py-1.5 rounded-md font-sans">Sans</button>
-          <button onclick="setAppearance('face','serif')" data-f="serif" class="appearance-btn text-[11px] py-1.5 rounded-md font-serif">Serif</button>
+          <button onclick="setAppearance('face','sf-pro')"     data-f="sf-pro"     class="appearance-btn text-[11px] py-1.5 rounded-md" style="font-family: -apple-system, BlinkMacSystemFont, ui-sans-serif, sans-serif">SF Pro</button>
+          <button onclick="setAppearance('face','sf-rounded')" data-f="sf-rounded" class="appearance-btn text-[11px] py-1.5 rounded-md" style="font-family: ui-rounded, -apple-system, sans-serif">SF Rounded</button>
+          <button onclick="setAppearance('face','new-york')"   data-f="new-york"   class="appearance-btn text-[11px] py-1.5 rounded-md" style="font-family: ui-serif, 'New York', Georgia, serif">New York</button>
+          <button onclick="setAppearance('face','avenir')"     data-f="avenir"     class="appearance-btn text-[11px] py-1.5 rounded-md" style="font-family: Avenir, 'Avenir Next', -apple-system, sans-serif">Avenir</button>
+          <button onclick="setAppearance('face','charter')"    data-f="charter"    class="appearance-btn text-[11px] py-1.5 rounded-md" style="font-family: Charter, Georgia, serif">Charter</button>
+          <button onclick="setAppearance('face','sf-mono')"    data-f="sf-mono"    class="appearance-btn text-[11px] py-1.5 rounded-md" style="font-family: ui-monospace, 'SF Mono', Menlo, monospace">SF Mono</button>
         </div>
       </div>
     </div>
@@ -127,7 +131,6 @@
   .width-focused { max-width: 42rem; }
   .width-comfort { max-width: 56rem; }
   .width-wide    { max-width: 100%;  }
-  .face-serif #reader-content, .face-serif #edit-content { font-family: 'Source Serif 4', ui-serif, Georgia, serif; }
 
   /* Folder tree */
   .folder-row { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 10px; cursor: pointer; font-size: 13px; }
@@ -420,15 +423,28 @@ async function deleteCurrent() {
 }
 
 // ── Reading appearance (Width / Typeface) — global preference, localStorage ──
+// Typefaces mirror the reference app's picker exactly. All six are native
+// macOS system/licensed fonts — no download, rendered by the OS itself on a
+// Mac. Non-Mac browsers fall through each stack to a close web-font/generic
+// equivalent so nothing breaks off-Mac.
+const NOTE_TYPEFACES = {
+  'sf-pro':     "-apple-system, BlinkMacSystemFont, ui-sans-serif, \"SF Pro Text\", \"Helvetica Neue\", Inter, sans-serif",
+  'sf-rounded': "ui-rounded, \"SF Pro Rounded\", -apple-system, BlinkMacSystemFont, sans-serif",
+  'new-york':   "ui-serif, \"New York\", \"Source Serif 4\", Georgia, serif",
+  'avenir':     "Avenir, \"Avenir Next\", -apple-system, BlinkMacSystemFont, sans-serif",
+  'charter':    "Charter, \"Source Serif 4\", Georgia, serif",
+  'sf-mono':    "ui-monospace, \"SF Mono\", Menlo, \"IBM Plex Mono\", monospace",
+};
+
 function initAppearance() {
   const width = localStorage.getItem('labui-notes-width') || 'comfort';
-  const face = localStorage.getItem('labui-notes-face') || 'sans';
+  const face = localStorage.getItem('labui-notes-face') || 'sf-pro';
   applyAppearance(width, face);
 }
 
 function setAppearance(kind, value) {
   const width = kind === 'width' ? value : (localStorage.getItem('labui-notes-width') || 'comfort');
-  const face = kind === 'face' ? value : (localStorage.getItem('labui-notes-face') || 'sans');
+  const face = kind === 'face' ? value : (localStorage.getItem('labui-notes-face') || 'sf-pro');
   localStorage.setItem('labui-notes-width', width);
   localStorage.setItem('labui-notes-face', face);
   applyAppearance(width, face);
@@ -441,7 +457,11 @@ function applyAppearance(width, face) {
     el.classList.remove('width-focused', 'width-comfort', 'width-wide');
     el.classList.add('width-' + width);
   });
-  document.querySelector('section').classList.toggle('face-serif', face === 'serif');
+  const stack = NOTE_TYPEFACES[face] || NOTE_TYPEFACES['sf-pro'];
+  const readerContent = document.getElementById('reader-content');
+  const editContent = document.getElementById('edit-content');
+  if (readerContent) readerContent.style.fontFamily = stack;
+  if (editContent) editContent.style.fontFamily = stack;
   document.querySelectorAll('#width-buttons .appearance-btn').forEach(b => b.classList.toggle('active', b.dataset.w === width));
   document.querySelectorAll('#face-buttons .appearance-btn').forEach(b => b.classList.toggle('active', b.dataset.f === face));
 }

@@ -31,10 +31,17 @@
       darkMode: 'class',
       theme: {
         extend: {
+          // Font stacks lead with macOS's native UI fonts (San Francisco / New
+          // York / SF Mono), matched via -apple-system and the CSS ui-* generic
+          // keywords — no download, and it renders as the exact system fonts a
+          // native Mac app (like the reference) uses. Web fonts (loaded above)
+          // are the fallback for any non-Mac browser, so nothing breaks there.
           fontFamily: {
-            sans: ['Inter', 'system-ui', 'sans-serif'],
-            serif: ['"Source Serif 4"', 'ui-serif', 'Georgia', 'serif'],
-            mono: ['"IBM Plex Mono"', 'ui-monospace', 'monospace'],
+            sans: ['-apple-system', 'BlinkMacSystemFont', 'ui-sans-serif',
+                   '"SF Pro Text"', '"Helvetica Neue"', 'Inter', 'system-ui', 'sans-serif'],
+            serif: ['ui-serif', '"New York"', '"Source Serif 4"', 'Georgia', 'serif'],
+            mono: ['ui-monospace', '"SF Mono"', 'Menlo', '"IBM Plex Mono"', 'monospace'],
+            rounded: ['ui-rounded', '"SF Pro Rounded"', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
           },
           colors: {
             ink: {
