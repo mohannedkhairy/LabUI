@@ -16,6 +16,7 @@ import subprocess
 import sys
 import threading
 import time
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
@@ -1227,24 +1228,76 @@ async def api_upload(file: UploadFile = File(...)):
 
 
 # ── /notes ────────────────────────────────────────────────────────────────────
+# Notes are flat .md files in NOTES_DIR with a lightweight (non-YAML-library)
+# frontmatter block: "---\nkey: value\n...\n---\n\n<body>". Folder membership is
+# just another frontmatter key, so a note with no `folder:` line is unfiled —
+# no schema migration needed for notes that predate folders.
+
+_FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n?", re.DOTALL)
+_FOLDERS_FILE = ".folders.json"
+
+
+def _parse_frontmatter(text: str) -> tuple[dict, str]:
+    """Return (meta_dict, body) for a note's raw file content."""
+    m = _FRONTMATTER_RE.match(text)
+    if not m:
+        return {}, text
+    meta = {}
+    for line in m.group(1).split("\n"):
+        if ":" not in line:
+            continue
+        k, _, v = line.partition(":")
+        meta[k.strip()] = v.strip().strip("\"'")
+    return meta, text[m.end():]
+
+
+def _write_note(path: Path, meta: dict, body: str) -> None:
+    lines = ["---"]
+    for k, v in meta.items():
+        if v:
+            lines.append(f"{k}: {v}")
+    lines.append("---")
+    path.write_text("\n".join(lines) + "\n\n" + body, encoding="utf-8")
+
+
+def _folders_path() -> Path:
+    return NOTES_DIR / _FOLDERS_FILE
+
+
+def _load_folders() -> list[dict]:
+    p = _folders_path()
+    if not p.exists():
+        return []
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+
+
+def _save_folders(folders: list[dict]) -> None:
+    NOTES_DIR.mkdir(parents=True, exist_ok=True)
+    _folders_path().write_text(json.dumps(folders, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
 @router.get("/notes")
 def api_notes_list():
     NOTES_DIR.mkdir(parents=True, exist_ok=True)
     notes = []
     for f in sorted(NOTES_DIR.glob("*.md"), key=lambda x: x.stat().st_mtime, reverse=True):
-        if f.name.startswith("._"):
-            continue  # skip macOS AppleDouble sidecars
+        if f.name.startswith("._") or f.name.startswith("."):
+            continue  # skip macOS AppleDouble sidecars and the folders manifest
         content = f.read_text(encoding="utf-8", errors="replace")
-        title = f.stem
-        for line in content.split("\n"):
-            if line.startswith("title:"):
-                title = line[6:].strip().strip("\"'"); break
-            if line.startswith("# "):
-                title = line[2:].strip(); break
+        meta, body = _parse_frontmatter(content)
+        title = meta.get("title") or f.stem
+        if not meta.get("title"):
+            for line in body.split("\n"):
+                if line.startswith("# "):
+                    title = line[2:].strip(); break
         notes.append({
             "id": f.stem, "title": title,
+            "folder": meta.get("folder") or None,
             "modified": f.stat().st_mtime,
-            "preview": content[:200].replace("\n", " "),
+            "preview": body[:200].replace("\n", " ").strip(),
         })
     return notes
 
@@ -1253,6 +1306,7 @@ class NoteCreate(BaseModel):
     title: str = "Untitled Note"
     content: str = ""
     agent: str = ""
+    folder: Optional[str] = None
 
 
 @router.post("/notes")
@@ -1264,9 +1318,81 @@ def api_notes_create(body: NoteCreate):
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     safe = re.sub(r"[^\w\-]", "_", title[:40]).strip("_") or "note"
     note_id = f"{ts}_{safe}"
-    fm = f"---\ntitle: {title}\nagent: {agent}\ndate: {datetime.now().isoformat()[:19]}\n---\n\n"
-    (NOTES_DIR / f"{note_id}.md").write_text(fm + f"# {title}\n\n" + content, encoding="utf-8")
+    meta = {"title": title, "agent": agent, "date": datetime.now().isoformat()[:19]}
+    if body.folder:
+        meta["folder"] = body.folder
+    _write_note(NOTES_DIR / f"{note_id}.md", meta, f"# {title}\n\n" + content)
     return {"id": note_id, "title": title}
+
+
+# ── /notes/folders ──────────────────────────────────────────────────────────
+# Registered BEFORE the /notes/{note_id} routes below: FastAPI/Starlette match
+# in registration order, and {note_id} is a single-segment wildcard that would
+# otherwise swallow "GET /notes/folders" (treating "folders" as a note id).
+@router.get("/notes/folders")
+def api_notes_folders_list():
+    """Folders + a live note count each (counted from note frontmatter, not
+    cached, so it can never drift from the actual files)."""
+    NOTES_DIR.mkdir(parents=True, exist_ok=True)
+    folders = _load_folders()
+    counts: dict[str, int] = {}
+    for f in NOTES_DIR.glob("*.md"):
+        if f.name.startswith("._") or f.name.startswith("."):
+            continue
+        meta, _ = _parse_frontmatter(f.read_text(encoding="utf-8", errors="replace"))
+        fid = meta.get("folder")
+        if fid:
+            counts[fid] = counts.get(fid, 0) + 1
+    return [{**fo, "count": counts.get(fo["id"], 0)} for fo in folders]
+
+
+class FolderBody(BaseModel):
+    name: str
+
+
+@router.post("/notes/folders", status_code=201)
+def api_notes_folder_create(body: FolderBody):
+    name = (body.name or "").strip()[:60]
+    if not name:
+        raise HTTPException(422, "name is required")
+    folders = _load_folders()
+    fid = uuid.uuid4().hex[:10]
+    folders.append({"id": fid, "name": name, "created_at": datetime.now().isoformat()[:19]})
+    _save_folders(folders)
+    return {"id": fid, "name": name}
+
+
+@router.put("/notes/folders/{folder_id}")
+def api_notes_folder_rename(folder_id: str, body: FolderBody):
+    name = (body.name or "").strip()[:60]
+    if not name:
+        raise HTTPException(422, "name is required")
+    folders = _load_folders()
+    for fo in folders:
+        if fo["id"] == folder_id:
+            fo["name"] = name
+            _save_folders(folders)
+            return {"ok": True}
+    raise HTTPException(404, "folder not found")
+
+
+@router.delete("/notes/folders/{folder_id}")
+def api_notes_folder_delete(folder_id: str):
+    """Delete a folder. Notes inside it are unfiled, never deleted."""
+    folders = _load_folders()
+    remaining = [fo for fo in folders if fo["id"] != folder_id]
+    if len(remaining) == len(folders):
+        raise HTTPException(404, "folder not found")
+    _save_folders(remaining)
+    for f in NOTES_DIR.glob("*.md"):
+        if f.name.startswith("._") or f.name.startswith("."):
+            continue
+        text = f.read_text(encoding="utf-8", errors="replace")
+        meta, body_text = _parse_frontmatter(text)
+        if meta.get("folder") == folder_id:
+            meta.pop("folder", None)
+            _write_note(f, meta, body_text)
+    return {"ok": True}
 
 
 @router.get("/notes/{note_id}")
@@ -1287,6 +1413,27 @@ def api_note_delete(note_id: str):
     if not p.exists():
         raise HTTPException(404, "not found")
     p.unlink()
+    return {"ok": True}
+
+
+class NoteFolderMove(BaseModel):
+    folder: Optional[str] = None
+
+
+@router.patch("/notes/{note_id}/folder")
+def api_note_move_folder(note_id: str, body: NoteFolderMove):
+    """Move a note into a folder, or unfile it (folder: null)."""
+    if not re.match(r"^[\w\-]+$", note_id):
+        raise HTTPException(400, "invalid id")
+    p = NOTES_DIR / f"{note_id}.md"
+    if not p.exists():
+        raise HTTPException(404, "note not found")
+    meta, body_text = _parse_frontmatter(p.read_text(encoding="utf-8", errors="replace"))
+    if body.folder:
+        meta["folder"] = body.folder
+    else:
+        meta.pop("folder", None)
+    _write_note(p, meta, body_text)
     return {"ok": True}
 
 
