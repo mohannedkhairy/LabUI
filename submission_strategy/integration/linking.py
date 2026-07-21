@@ -16,7 +16,6 @@ Usage:
 import os
 from pathlib import Path
 import sqlite3
-import json
 
 # RAG paths
 RAG_DB_PATH = (Path(__file__).resolve().parents[2] / 'Local_Rag' / 'rag' / 'data' / 'rag.db')
@@ -32,6 +31,18 @@ VALID_LINK_TYPES = {
     'extends',       # Manuscript extends this paper's work
     'related',       # Related to this paper
 }
+
+
+def _open_jfr_db() -> sqlite3.Connection:
+    from jfr.db.schema import init_db
+
+    return init_db(JFR_DB_PATH)
+
+
+def _open_rag_db() -> sqlite3.Connection:
+    conn = sqlite3.connect(str(RAG_DB_PATH))
+    conn.row_factory = sqlite3.Row
+    return conn
 
 def link_manuscript_to_paper(
     manuscript_id: str,
@@ -55,7 +66,7 @@ def link_manuscript_to_paper(
         raise ValueError(f"Invalid link_type: {link_type}. Must be one of {VALID_LINK_TYPES}")
     
     # Check manuscript exists
-    jfr_conn = sqlite3.connect(str(JFR_DB_PATH))
+    jfr_conn = _open_jfr_db()
     ms = jfr_conn.execute(
         "SELECT id FROM manuscript WHERE id=?", (manuscript_id,)
     ).fetchone()
@@ -64,7 +75,7 @@ def link_manuscript_to_paper(
         raise ValueError(f"Manuscript {manuscript_id} not found")
     
     # Check paper exists
-    rag_conn = sqlite3.connect(str(RAG_DB_PATH))
+    rag_conn = _open_rag_db()
     paper = rag_conn.execute(
         "SELECT * FROM papers WHERE paper_id=?", (paper_id,)
     ).fetchone()
@@ -73,10 +84,26 @@ def link_manuscript_to_paper(
         raise ValueError(f"Paper {paper_id} not found in RAG")
     
     # Insert link
-    jfr_conn.execute("""
-        INSERT INTO paper_links (manuscript_id, rag_paper_id, link_type, note)
-        VALUES (?, ?, ?, ?)
-    """, (manuscript_id, paper_id, link_type, note))
+    existing = jfr_conn.execute(
+        """
+        SELECT id FROM paper_links
+        WHERE manuscript_id=? AND rag_paper_id=? AND link_type=?
+        """,
+        (manuscript_id, paper_id, link_type),
+    ).fetchone()
+    if existing:
+        jfr_conn.execute(
+            "UPDATE paper_links SET note=? WHERE id=?",
+            (note, existing["id"]),
+        )
+    else:
+        jfr_conn.execute(
+            """
+            INSERT INTO paper_links (manuscript_id, rag_paper_id, link_type, note)
+            VALUES (?, ?, ?, ?)
+            """,
+            (manuscript_id, paper_id, link_type, note),
+        )
     jfr_conn.commit()
     jfr_conn.close()
     rag_conn.close()
@@ -94,8 +121,7 @@ def get_linked_papers(manuscript_id: str) -> list:
     Returns:
         List of dicts with paper details
     """
-    jfr_conn = sqlite3.connect(str(JFR_DB_PATH))
-    jfr_conn.row_factory = sqlite3.Row
+    jfr_conn = _open_jfr_db()
 
     links = jfr_conn.execute(
         "SELECT * FROM paper_links WHERE manuscript_id=? ORDER BY created_at DESC",
@@ -107,8 +133,7 @@ def get_linked_papers(manuscript_id: str) -> list:
         return []
 
     # Enrich with paper metadata from rag.db
-    rag_conn = sqlite3.connect(str(RAG_DB_PATH))
-    rag_conn.row_factory = sqlite3.Row
+    rag_conn = _open_rag_db()
     paper_ids = [link['rag_paper_id'] for link in links]
     placeholders = ','.join('?' * len(paper_ids))
     paper_rows = rag_conn.execute(
@@ -145,7 +170,7 @@ def get_manuscript_paper_links(manuscript_id: str) -> dict:
     Returns:
         dict with manuscript and linked papers
     """
-    jfr_conn = sqlite3.connect(str(JFR_DB_PATH))
+    jfr_conn = _open_jfr_db()
     
     # Get manuscript
     ms = jfr_conn.execute(
@@ -187,8 +212,8 @@ def delete_link(link_id: int) -> bool:
     Returns:
         True if successful
     """
-    jfr_conn = sqlite3.connect(str(JFR_DB_PATH))
-    jfr_conn.execute("DELETE FROM paper_links WHERE id=?", (link_id,))
+    jfr_conn = _open_jfr_db()
+    cursor = jfr_conn.execute("DELETE FROM paper_links WHERE id=?", (link_id,))
     jfr_conn.commit()
     jfr_conn.close()
-    return True
+    return cursor.rowcount > 0

@@ -37,80 +37,7 @@
   <!-- KaTeX math rendering (styles; JS loaded near </body>) -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
 
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          // Font stacks lead with macOS's native UI fonts (San Francisco / New
-          // York / SF Mono), matched via -apple-system and the CSS ui-* generic
-          // keywords — no download, and it renders as the exact system fonts a
-          // native Mac app (like the reference) uses. Web fonts (loaded above)
-          // are the fallback for any non-Mac browser, so nothing breaks there.
-          fontFamily: {
-            sans: ['-apple-system', 'BlinkMacSystemFont', 'ui-sans-serif',
-                   '"SF Pro Text"', '"Helvetica Neue"', 'Inter', 'system-ui', 'sans-serif'],
-            serif: ['ui-serif', '"New York"', '"Source Serif 4"', 'Georgia', 'serif'],
-            mono: ['ui-monospace', '"SF Mono"', 'Menlo', '"IBM Plex Mono"', 'monospace'],
-            rounded: ['ui-rounded', '"SF Pro Rounded"', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
-          },
-          colors: {
-            ink: {
-              50:  '#f7f8fa',  100: '#eef0f4',
-              200: '#dde1e8',  300: '#bfc6d2',
-              400: '#8b94a6',  500: '#5a6478',
-              600: '#3e4759',  700: '#2a3142',
-              800: '#1c2230',  900: '#12161f',
-              950: '#0a0d14',
-            },
-            // Same warm-neutral scale as `ink`, mirrored onto the stock Tailwind
-            // `gray` name too — several older templates use `gray-*` classes
-            // directly, so this keeps them in the same palette with no per-file edits.
-            gray: {
-              50:  '#f7f8fa',  100: '#eef0f4',
-              200: '#dde1e8',  300: '#bfc6d2',
-              400: '#8b94a6',  500: '#5a6478',
-              600: '#3e4759',  700: '#2a3142',
-              800: '#1c2230',  900: '#12161f',
-              950: '#0a0d14',
-            },
-            // `brand` resolves through CSS custom properties (--brand-50…950,
-            // defined in the <style> block below and swapped per theme via
-            // [data-color-theme]) instead of static hex. Tailwind bakes
-            // `rgb(var(--brand-500) / <alpha-value>)` into the compiled
-            // `.bg-brand-500` rule; the browser resolves the variable at PAINT
-            // time, so switching the theme attribute updates every brand-*
-            // class app-wide instantly — no Tailwind recompile, no page reload.
-            brand: {
-              50:  'rgb(var(--brand-50) / <alpha-value>)',   100: 'rgb(var(--brand-100) / <alpha-value>)',
-              200: 'rgb(var(--brand-200) / <alpha-value>)',  300: 'rgb(var(--brand-300) / <alpha-value>)',
-              400: 'rgb(var(--brand-400) / <alpha-value>)',  500: 'rgb(var(--brand-500) / <alpha-value>)',
-              600: 'rgb(var(--brand-600) / <alpha-value>)',  700: 'rgb(var(--brand-700) / <alpha-value>)',
-              800: 'rgb(var(--brand-800) / <alpha-value>)',  900: 'rgb(var(--brand-900) / <alpha-value>)',
-              950: 'rgb(var(--brand-950) / <alpha-value>)',
-            },
-            // Same live-theme scale mirrored onto Tailwind's stock `indigo` name —
-            // several older templates use `indigo-*` classes directly instead of
-            // the custom `brand` token; this keeps the whole app on one
-            // switchable accent color without touching those templates.
-            indigo: {
-              50:  'rgb(var(--brand-50) / <alpha-value>)',   100: 'rgb(var(--brand-100) / <alpha-value>)',
-              200: 'rgb(var(--brand-200) / <alpha-value>)',  300: 'rgb(var(--brand-300) / <alpha-value>)',
-              400: 'rgb(var(--brand-400) / <alpha-value>)',  500: 'rgb(var(--brand-500) / <alpha-value>)',
-              600: 'rgb(var(--brand-600) / <alpha-value>)',  700: 'rgb(var(--brand-700) / <alpha-value>)',
-              800: 'rgb(var(--brand-800) / <alpha-value>)',  900: 'rgb(var(--brand-900) / <alpha-value>)',
-              950: 'rgb(var(--brand-950) / <alpha-value>)',
-            },
-          },
-          boxShadow: {
-            soft: '0 1px 2px rgb(0 0 0 / 0.04), 0 1px 8px rgb(0 0 0 / 0.04)',
-            'soft-dark': '0 1px 2px rgb(0 0 0 / 0.3), 0 1px 12px rgb(0 0 0 / 0.4)',
-          },
-        },
-      },
-    };
-  </script>
+  <link rel="stylesheet" href="/static/app.css">
 
   <script src="https://unpkg.com/htmx.org@1.9.12"></script>
   <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
@@ -321,6 +248,30 @@
       box-shadow: 0 1px 2px rgba(0,0,0,0.5), 0 30px 80px -30px rgba(0,0,0,0.7);
     }
 
+    .mobile-nav-overlay { display: none; }
+    @media (max-width: 1023px) {
+      .app-shell { border-radius: 18px; }
+      .app-sidebar {
+        position: fixed !important;
+        inset: 12px auto 12px 12px;
+        z-index: 50;
+        width: min(15rem, calc(100vw - 48px));
+        border-radius: 16px;
+        box-shadow: 0 24px 70px -24px rgba(15, 19, 36, 0.55);
+        transform: translateX(calc(-100% - 24px));
+        transition: transform 180ms ease;
+      }
+      .app-sidebar.mobile-open { transform: translateX(0); }
+      .mobile-nav-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 40;
+        border: 0;
+        background: rgba(10, 13, 20, 0.42);
+      }
+      .mobile-nav-overlay.mobile-open { display: block; }
+    }
+
     /* ── .glass-panel: colored grain wash + frosted glass ─────────────────────
        Reusable surface treatment — the app nav sidebar and the Notes folder
        panel both use it. A visible fine-grain noise texture (an inline SVG
@@ -415,8 +366,10 @@
 
 <div class="h-full p-3 lg:p-4">
 <div class="app-shell flex h-full">
+  <button id="mobile-nav-overlay" type="button" class="mobile-nav-overlay"
+          aria-label="Close navigation" onclick="setMobileNav(false)"></button>
   <!-- ── Sidebar ────────────────────────────────────────────────── -->
-  <aside class="glass-panel w-60 flex flex-col flex-shrink-0">
+  <aside id="app-sidebar" class="app-sidebar glass-panel w-60 flex flex-col flex-shrink-0">
     <!-- Brand -->
     <div class="px-5 pt-5 pb-4 flex items-center gap-3">
       <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center text-white"
@@ -435,6 +388,12 @@
         <div class="font-semibold tracking-tight text-[15px]">LabUI</div>
         <div class="text-[10px] text-ink-400 dark:text-ink-500 -mt-0.5 uppercase tracking-wider font-semibold">Lab · Literature · Pubs</div>
       </div>
+      <button type="button" class="lg:hidden ml-auto p-2 text-ink-500 hover:text-ink-800 dark:hover:text-ink-100"
+              aria-label="Close navigation" onclick="setMobileNav(false)">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+      </button>
     </div>
 
     {% set workspace_nav = [
@@ -542,15 +501,22 @@
 
   <!-- ── Main ───────────────────────────────────────────────────── -->
   <main class="flex-1 overflow-y-auto scroll-thin bg-[#fbfdfb] dark:bg-[#0d1712]">
-    <header class="sticky top-0 z-10 backdrop-blur px-8 py-5 flex items-center justify-between gap-4
+    <header class="sticky top-0 z-10 backdrop-blur px-4 sm:px-6 lg:px-8 py-4 lg:py-5 flex items-center justify-between gap-3
                    bg-[#fbfdfb]/[0.82] dark:bg-[#0d1712]/[0.82]">
-      <div class="min-w-0">
-        <h1 class="text-2xl font-sans font-semibold text-ink-900 dark:text-ink-50 tracking-tight">{% block heading %}{% endblock %}</h1>
+      <button id="mobile-nav-button" type="button"
+              class="lg:hidden flex-shrink-0 p-2 -ml-2 text-ink-600 dark:text-ink-300"
+              aria-label="Open navigation" aria-expanded="false" onclick="setMobileNav(true)">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+        </svg>
+      </button>
+      <div class="min-w-0 flex-1">
+        <h1 class="text-xl sm:text-2xl font-sans font-semibold text-ink-900 dark:text-ink-50 tracking-tight">{% block heading %}{% endblock %}</h1>
         <p class="text-sm text-ink-400 dark:text-ink-500 mt-0.5">{% block subtitle %}{% endblock %}</p>
       </div>
-      <div class="flex gap-2 flex-shrink-0">{% block header_actions %}{% endblock %}</div>
+      <div class="flex gap-2 flex-wrap justify-end flex-shrink-0">{% block header_actions %}{% endblock %}</div>
     </header>
-    <div class="px-8 pb-8">
+    <div class="px-4 sm:px-6 lg:px-8 pb-8">
       {% block content %}{% endblock %}
     </div>
   </main>
@@ -558,6 +524,22 @@
 </div>
 
 <script>
+  function setMobileNav(open) {
+    const sidebar = document.getElementById('app-sidebar');
+    const overlay = document.getElementById('mobile-nav-overlay');
+    const button = document.getElementById('mobile-nav-button');
+    if (!sidebar || !overlay) return;
+    sidebar.classList.toggle('mobile-open', open);
+    overlay.classList.toggle('mobile-open', open);
+    if (button) button.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') setMobileNav(false);
+  });
+  document.querySelectorAll('#app-sidebar a').forEach((link) => {
+    link.addEventListener('click', () => setMobileNav(false));
+  });
+
   // ── Theme toggle ─────────────────────────────────────────────────
   function toggleTheme() {
     const root = document.documentElement;

@@ -10,6 +10,7 @@ dist/
 .venv/
 venv/
 env/
+node_modules/
 
 # ── Runtime data — never commit (user papers, indexes, notes, DBs) ───────────
 .data/

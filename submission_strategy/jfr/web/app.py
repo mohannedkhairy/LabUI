@@ -113,7 +113,40 @@ def _days_since(iso_str: Optional[str]) -> int:
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "version": "0.1.0"}
+    database_ready = False
+    try:
+        conn = _conn()
+        conn.execute("SELECT 1").fetchone()
+        conn.close()
+        database_ready = True
+    except Exception:
+        pass
+    rag_ready = bool(getattr(app.state, "rag_ready", False))
+    return {
+        "status": "ok" if database_ready and rag_ready else "degraded",
+        "version": "0.1.0",
+        "database": database_ready,
+        "rag": rag_ready,
+    }
+
+
+@app.get("/api/ready")
+def readiness():
+    state = health()
+    if state["status"] != "ok":
+        raise HTTPException(503, state)
+    return state
+
+
+@app.get("/api/rag/search")
+def rag_search_get_api(
+    query: str = Query(..., min_length=1),
+    limit: int = Query(10, ge=1, le=50),
+):
+    """Compatibility endpoint for older LabUI and CLI search clients."""
+    from jfr.web.rag_routes import SearchBody, api_search
+
+    return api_search(SearchBody(query=query, top_k=limit))
 
 
 # ── Journals API ───────────────────────────────────────────────────────────────
@@ -826,7 +859,7 @@ def rag_lab_stats_api():
         from integration.lab_view import get_research_lab_stats
         return get_research_lab_stats()
     except Exception as e:
-        return {"error": f"Failed to get stats: {e}", "stats": {}}
+        raise HTTPException(500, f"Failed to get stats: {e}")
 
 
 @app.get("/api/rag/lab/{ms_id}")
@@ -834,23 +867,41 @@ def rag_lab_dashboard_api(ms_id: str):
     """Get research lab dashboard data for a manuscript."""
     try:
         from integration.lab_view import research_lab_dashboard
-        return research_lab_dashboard(ms_id)
+        result = research_lab_dashboard(ms_id)
+        if result.get("error") == "Manuscript not found":
+            raise HTTPException(404, result["error"])
+        return result
+    except HTTPException:
+        raise
     except Exception as e:
-        return {"error": f"Failed to get lab dashboard: {e}", "template_data": {}}
+        raise HTTPException(500, f"Failed to get lab dashboard: {e}")
 
 
 # ── Template: Research Lab ─────────────────────────────────
 
 @app.get("/lab", response_class=HTMLResponse)
-def research_lab_page(request: Request, ms_id: str = ""):
+def research_lab_page(
+    request: Request,
+    ms: str = Query(""),
+    ms_id: str = Query(""),
+):
     """Research lab page combining RAG and JFR."""
     conn = _conn()
-    
-    # Get manuscripts for selector
-    manuscripts = conn.execute(
-        "SELECT id, title FROM manuscript ORDER BY created_at DESC"
-    ).fetchall()
-    
+    selected_id = ms or ms_id
+    try:
+        manuscripts = conn.execute(
+            "SELECT id, title FROM manuscript ORDER BY created_at DESC"
+        ).fetchall()
+        selected_manuscript = None
+        if selected_id:
+            selected_manuscript = conn.execute(
+                "SELECT * FROM manuscript WHERE id=?", (selected_id,)
+            ).fetchone()
+            if selected_manuscript is None:
+                selected_id = ""
+    finally:
+        conn.close()
+
     # Get lab stats
     try:
         from integration.lab_view import get_research_lab_stats
@@ -860,7 +911,10 @@ def research_lab_page(request: Request, ms_id: str = ""):
     
     return templates.TemplateResponse(request, "research_lab.html", {
         "manuscripts": [dict(m) for m in manuscripts],
-        "selected_ms": ms_id,
+        "selected_ms": selected_id,
+        "selected_manuscript": (
+            dict(selected_manuscript) if selected_manuscript is not None else None
+        ),
         "stats": stats,
     })
 
