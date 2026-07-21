@@ -56,8 +56,10 @@
                     <span x-show="t.due_date" class="chip"
                           :class="isOverdue(t) ? 'chip-danger' : ''"
                           x-text="t.due_date"></span>
-                    <span x-show="t.manuscript_title" class="chip chip-brand" x-text="'📄 ' + (t.manuscript_title || '').slice(0, 22)"></span>
-                    <span x-show="t.experiment_name" class="chip chip-brand" x-text="'🧪 ' + (t.experiment_name || '').slice(0, 22)"></span>
+                    <a x-show="t.manuscript_title" href="#" @click.stop.prevent="window.location.href = '/manuscripts/' + encodeURIComponent(t.manuscript_id) + '/edit'"
+                       class="chip chip-brand hover:opacity-75" x-text="'📄 ' + (t.manuscript_title || '').slice(0, 22)"></a>
+                    <a x-show="t.experiment_name" href="#" @click.stop.prevent="window.location.href = '/experiments/' + encodeURIComponent(t.experiment_id)"
+                       class="chip chip-brand hover:opacity-75" x-text="'🧪 ' + (t.experiment_name || '').slice(0, 22)"></a>
                     <template x-for="m in (t.mentions || []).slice(0, 3)" :key="m.type + m.id">
                       <span class="chip" x-text="(mentionIcon(m.type)) + ' ' + m.title.slice(0, 18)"></span>
                     </template>
@@ -135,7 +137,11 @@
         </div>
 
         <div>
-          <label class="text-[11px] uppercase tracking-wider text-ink-400 font-semibold">Due date</label>
+          <label class="text-[11px] uppercase tracking-wider text-ink-400 font-semibold flex items-center justify-between">
+            <span>Due date</span>
+            <a x-show="editing.due_date" :href="'/schedule?month=' + (editing.due_date || '').slice(0, 7)"
+               class="normal-case font-normal text-brand-600 dark:text-brand-300 hover:underline">View on calendar →</a>
+          </label>
           <input x-model="editing.due_date" type="date"
                  class="w-full mt-1 bg-ink-50 dark:bg-ink-800 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-400">
         </div>
@@ -181,6 +187,7 @@ try { marked.use({ gfm: true, breaks: true }); if (window.markedKatex) marked.us
 
 const MENTION_ICONS = { manuscript: '📄', experiment: '🧪', task: '✅', paper: '📚', memory: '🧠', note: '📝' };
 const OPEN_TASK_ID = {{ open_task_id | tojson }};
+const NEW_TASK_PRESET = {{ new_task_preset | tojson }};
 
 function taskBoard() {
   return {
@@ -199,6 +206,7 @@ function taskBoard() {
     async init() {
       await this.loadTasks();
       if (OPEN_TASK_ID) this.openTask(OPEN_TASK_ID);
+      else if (NEW_TASK_PRESET) this.newTaskDrawer(NEW_TASK_PRESET);
     },
 
     async loadTasks() {
@@ -276,9 +284,11 @@ function taskBoard() {
       this.$nextTick(() => this.attachOnce());
     },
 
-    newTaskDrawer() {
+    newTaskDrawer(preset) {
+      preset = preset || {};
       this.editing = { title: '', description_md: '', status: 'todo', priority: 'normal',
-                        due_date: '', manuscript_id: '', experiment_id: '' };
+                        due_date: preset.due_date || '', manuscript_id: preset.manuscript_id || '',
+                        experiment_id: preset.experiment_id || '' };
       this.tagsInput = '';
       this.drawerOpen = true;
       this.$nextTick(() => this.attachOnce());

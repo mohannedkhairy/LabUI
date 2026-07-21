@@ -1117,7 +1117,18 @@ def experiment_detail_page(request: Request, exp_id: str):
         raise HTTPException(404, f"Experiment {exp_id!r} not found")
     titles = _ms_title_map(conn)
     exp = _experiment_row_to_dict(row, titles)
-    return templates.TemplateResponse(request, "experiment_detail.html", {"exp": exp})
+
+    task_rows = conn.execute(
+        "SELECT * FROM task WHERE experiment_id=? ORDER BY (status='done'), (due_date IS NULL), due_date ASC",
+        (exp_id,),
+    ).fetchall()
+    exp_names = _exp_name_map(conn)
+    linked_tasks = [_task_row_to_dict(r, titles, exp_names) for r in task_rows]
+
+    return templates.TemplateResponse(request, "experiment_detail.html", {
+        "exp": exp,
+        "linked_tasks": linked_tasks,
+    })
 
 
 @app.get("/experiments/{exp_id}/edit", response_class=HTMLResponse)
@@ -1320,16 +1331,34 @@ def delete_task_api(task_id: str):
 # ── Tasks: page routes ────────────────────────────────────────────────────────
 
 @app.get("/tasks", response_class=HTMLResponse)
-def tasks_page(request: Request, open: Optional[str] = None):
+def tasks_page(
+    request: Request,
+    open: Optional[str] = None,
+    new: Optional[str] = None,
+    due_date: Optional[str] = None,
+    experiment_id: Optional[str] = None,
+    manuscript_id: Optional[str] = None,
+):
     conn = _conn()
     manuscripts = conn.execute("SELECT id, title FROM manuscript ORDER BY title").fetchall()
     experiments = conn.execute("SELECT id, name FROM experiment ORDER BY name").fetchall()
+    # Cross-feature deep link: Schedule ("+" on a day) and Experiment detail
+    # ("+ Add task") land here with the new-task drawer pre-opened and
+    # pre-filled, instead of a bare board the user has to configure by hand.
+    new_task_preset = None
+    if new or due_date or experiment_id or manuscript_id:
+        new_task_preset = {
+            "due_date": due_date or "",
+            "experiment_id": experiment_id or "",
+            "manuscript_id": manuscript_id or "",
+        }
     return templates.TemplateResponse(request, "tasks.html", {
         "manuscripts": [dict(m) for m in manuscripts],
         "experiments": [dict(e) for e in experiments],
         "statuses": TASK_STATUSES,
         "priorities": TASK_PRIORITIES,
         "open_task_id": open or "",
+        "new_task_preset": new_task_preset,
     })
 
 
@@ -1469,10 +1498,29 @@ def schedule_page(request: Request, month: Optional[str] = None):
     titles = _ms_title_map(conn)
     expmts = [_experiment_row_to_dict(r, titles) for r in rows]
 
-    # Bucket by ISO date
+    task_rows = conn.execute(
+        "SELECT * FROM task"
+        " WHERE due_date IS NOT NULL"
+        "   AND due_date BETWEEN ? AND ?"
+        " ORDER BY due_date ASC",
+        (first_iso, last_iso),
+    ).fetchall()
+    exp_names = _exp_name_map(conn)
+    due_tasks = [_task_row_to_dict(r, titles, exp_names) for r in task_rows]
+
+    # Bucket by ISO date — one merged, backend-normalized list per day so the
+    # template doesn't need to interleave two differently-shaped collections.
     by_day: dict[str, list] = {}
     for e in expmts:
-        by_day.setdefault(e.get("scheduled_for"), []).append(e)
+        by_day.setdefault(e.get("scheduled_for"), []).append({
+            "kind": "experiment", "id": e["id"], "label": e["name"],
+            "status": e.get("status"), "href": f"/experiments/{e['id']}",
+        })
+    for t in due_tasks:
+        by_day.setdefault(t.get("due_date"), []).append({
+            "kind": "task", "id": t["id"], "label": t["title"],
+            "status": t.get("status"), "href": f"/tasks?open={t['id']}",
+        })
 
     # Calendar grid: weeks of (date|None) cells starting on Monday
     from datetime import date, timedelta
@@ -1489,7 +1537,7 @@ def schedule_page(request: Request, month: Optional[str] = None):
                 "day": cur.day,
                 "in_month": (cur.month == m),
                 "is_today": cur == datetime.now().date(),
-                "experiments": by_day.get(cur.strftime("%Y-%m-%d"), []),
+                "items": by_day.get(cur.strftime("%Y-%m-%d"), []),
             })
             cur += timedelta(days=1)
         weeks.append(week)
@@ -1508,4 +1556,5 @@ def schedule_page(request: Request, month: Optional[str] = None):
         "prev_month": f"{prev_y:04d}-{prev_m:02d}",
         "next_month": f"{next_y:04d}-{next_m:02d}",
         "experiment_count": len(expmts),
+        "task_count": len(due_tasks),
     })

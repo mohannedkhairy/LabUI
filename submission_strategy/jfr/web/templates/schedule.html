@@ -1,11 +1,15 @@
 {% extends "base.html" %}
 {% block title %}Schedule{% endblock %}
 {% block heading %}Schedule — {{ month_label }}{% endblock %}
-{% block subtitle %}{{ experiment_count }} scheduled this month{% endblock %}
+{% block subtitle %}{{ experiment_count }} experiment{{ 's' if experiment_count != 1 }} · {{ task_count }} task{{ 's' if task_count != 1 }} this month{% endblock %}
 {% block header_actions %}
+  <a href="/tasks?new=1" class="bg-ink-100 dark:bg-ink-800 hover:bg-ink-200 dark:hover:bg-ink-700 text-ink-700 dark:text-ink-100 text-sm font-medium px-4 py-2 rounded-xl flex items-center gap-2">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+    Add task
+  </a>
   <a href="/experiments/new" class="bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium px-4 py-2 rounded-xl flex items-center gap-2">
     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-    Schedule one
+    Schedule experiment
   </a>
 {% endblock %}
 
@@ -19,9 +23,9 @@
     <a href="/schedule" class="text-[11px] text-brand-600 dark:text-brand-300 hover:underline ml-2">Today</a>
   </div>
   <div class="flex items-center gap-4 text-[11px] text-ink-500 dark:text-ink-400">
-    <span class="flex items-center gap-1.5"><span class="chip chip-brand">planned</span></span>
-    <span class="flex items-center gap-1.5"><span class="chip chip-warn">in progress</span></span>
-    <span class="flex items-center gap-1.5"><span class="chip chip-success">done</span></span>
+    <span class="flex items-center gap-1.5">🧪 <span>Experiment</span></span>
+    <span class="flex items-center gap-1.5">☐ <span>Task</span></span>
+    <span class="flex items-center gap-1.5">✓ <span>Done</span></span>
   </div>
 </div>
 
@@ -35,35 +39,35 @@
   </div>
   <!-- Weeks -->
   <div class="grid grid-cols-7" style="grid-auto-rows: minmax(120px, auto)">
-    {% set status_chip = {
-      'planned':     'chip-brand',
-      'in_progress': 'chip-warn',
-      'done':        'chip-success',
-      'failed':      'chip-danger',
-      'abandoned':   'chip',
-    } %}
     {% for week in weeks %}
       {% for cell in week %}
-      <div class="border-t border-l border-ink-100 dark:border-ink-800 px-2 py-2 flex flex-col gap-1
+      <div class="group border-t border-l border-ink-100 dark:border-ink-800 px-2 py-2 flex flex-col gap-1
                   {% if not cell.in_month %}bg-ink-50/60 dark:bg-ink-950/60{% endif %}">
         <div class="flex items-center justify-between">
           <div class="text-xs font-semibold
                       {% if cell.is_today %}bg-brand-600 text-white rounded-full w-6 h-6 flex items-center justify-center
                       {% elif cell.in_month %}text-ink-700 dark:text-ink-200
                       {% else %}text-ink-300 dark:text-ink-700{% endif %}">{{ cell.day }}</div>
-          {% if cell.experiments %}
-          <span class="text-[10px] font-mono text-ink-400">{{ cell.experiments | length }}</span>
-          {% endif %}
+          <a href="/tasks?new=1&amp;due_date={{ cell.iso }}" title="Add a task due this day"
+             class="opacity-0 group-hover:opacity-100 text-ink-300 hover:text-brand-600 text-xs transition">+</a>
         </div>
-        {% for e in cell.experiments[:3] %}
-        <a href="/experiments/{{ e.id }}"
+        {% for item in cell.items[:3] %}
+        {% if item.kind == 'experiment' %}
+        <a href="{{ item.href }}"
            class="block bg-brand-50 dark:bg-brand-950 hover:bg-brand-100 dark:hover:bg-brand-900 px-2 py-1 rounded text-[11px] truncate"
-           title="{{ e.name }}">
-          <span class="font-medium text-brand-800 dark:text-brand-200">{{ e.name[:30] }}</span>
+           title="{{ item.label }}">
+          <span class="font-medium text-brand-800 dark:text-brand-200">🧪 {{ item.label[:26] }}</span>
         </a>
+        {% else %}
+        <a href="{{ item.href }}"
+           class="block bg-ink-100 dark:bg-ink-800 hover:bg-ink-200 dark:hover:bg-ink-700 px-2 py-1 rounded text-[11px] truncate"
+           title="{{ item.label }}">
+          <span class="font-medium text-ink-700 dark:text-ink-200">{{ '✓' if item.status == 'done' else '☐' }} {{ item.label[:26] }}</span>
+        </a>
+        {% endif %}
         {% endfor %}
-        {% if cell.experiments | length > 3 %}
-        <a href="/experiments" class="text-[10px] text-ink-400 hover:underline">+{{ (cell.experiments | length) - 3 }} more</a>
+        {% if cell.items | length > 3 %}
+        <span class="text-[10px] text-ink-400">+{{ (cell.items | length) - 3 }} more</span>
         {% endif %}
       </div>
       {% endfor %}
