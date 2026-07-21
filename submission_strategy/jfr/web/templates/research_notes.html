@@ -1,7 +1,13 @@
 {% extends "base.html" %}
 {% block title %}Notes{% endblock %}
-{% block heading %}Research Lab — Notes{% endblock %}
+{% block heading %}Notes{% endblock %}
+{% block subtitle %}A quiet place for what you're thinking{% endblock %}
 {% block header_actions %}
+  <button onclick="newFolder()"
+          class="bg-ink-100 dark:bg-ink-800 hover:bg-ink-200 dark:hover:bg-ink-700 text-ink-700 dark:text-ink-100 text-sm font-medium px-4 py-2 rounded-lg flex items-center gap-2">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
+    New folder
+  </button>
   <button onclick="newNote()" class="bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium px-4 py-2 rounded-lg flex items-center gap-2">
     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
     New note
@@ -11,54 +17,97 @@
 {% block content %}
 <div class="grid grid-cols-12 gap-5 h-[calc(100vh-13rem)]">
 
-  <!-- Note list -->
-  <aside class="col-span-4 tile tile-flush flex flex-col overflow-hidden">
-    <div class="px-4 py-3 border-b border-ink-100 dark:border-ink-800 flex items-center justify-between">
-      <h3 class="font-semibold text-sm">All notes</h3>
-      <span id="notes-count" class="text-[11px] text-ink-400 font-mono">—</span>
+  <!-- Note list — folder tree -->
+  <aside class="glass-panel col-span-4 rounded-xl shadow-soft dark:shadow-soft-dark flex flex-col overflow-hidden">
+    <div class="px-3 pt-3 pb-2 relative z-[1]">
+      <div class="relative">
+        <svg class="w-4 h-4 text-ink-400 absolute left-3 top-1/2 -translate-y-1/2 z-[1]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+        </svg>
+        <input id="note-search" type="text" placeholder="Search notes" oninput="renderSidebar()"
+               class="glass-surface w-full rounded-lg pl-9 pr-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-300">
+      </div>
     </div>
-    <!-- Prominent New note CTA -->
-    <button onclick="newNote()"
-      class="m-3 mb-1 bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold px-4 py-2.5 rounded-xl flex items-center justify-center gap-2 shadow-[0_4px_12px_-4px_rgba(94,107,240,0.45)]">
-      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-      New note
-    </button>
-    <div id="notes-list" class="flex-1 overflow-y-auto scroll-thin p-2 space-y-1.5">
-      <div class="text-ink-400 text-center py-8 text-xs">Loading…</div>
+    <div id="sidebar-scroll" class="flex-1 overflow-y-auto scroll-thin px-2 pb-3">
+      <div id="sidebar-body">
+        <div class="text-ink-400 text-center py-8 text-xs">Loading…</div>
+      </div>
     </div>
   </aside>
 
   <!-- Reader / editor -->
-  <section class="col-span-8 bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-xl shadow-soft dark:shadow-soft-dark flex flex-col overflow-hidden">
-    <div id="reader-header" class="px-5 py-3 border-b border-ink-200 dark:border-ink-800 flex items-center justify-between" style="display:none">
-      <div>
-        <h3 id="reader-title" class="font-semibold text-sm"></h3>
+  <section class="col-span-8 bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-xl shadow-soft dark:shadow-soft-dark flex flex-col overflow-hidden relative">
+    <div id="reader-header" class="px-5 py-3 border-b border-ink-200 dark:border-ink-800 flex items-center justify-between gap-3" style="display:none">
+      <div class="min-w-0">
+        <h3 id="reader-title" class="font-serif font-semibold text-base truncate"></h3>
         <div id="reader-meta" class="text-[11px] text-ink-400 mt-0.5"></div>
       </div>
-      <div class="flex gap-2">
+      <div class="flex items-center gap-2 flex-shrink-0">
+        <select id="folder-select" onchange="moveCurrentNote(this.value)"
+                class="text-xs bg-ink-50 dark:bg-ink-800 border border-ink-200 dark:border-ink-700 rounded-md px-2 py-1.5 max-w-[140px]">
+          <option value="">Unfiled</option>
+        </select>
+        <button onclick="toggleAppearance()" title="Reading appearance"
+                class="text-xs font-semibold bg-ink-100 dark:bg-ink-800 hover:bg-brand-100 dark:hover:bg-brand-950 text-ink-700 dark:text-ink-200 w-8 h-8 rounded-md flex items-center justify-center">Aa</button>
         <button id="reader-edit" onclick="toggleEdit()" class="text-xs bg-ink-100 dark:bg-ink-800 hover:bg-brand-100 dark:hover:bg-brand-950 text-ink-700 dark:text-ink-200 px-3 py-1.5 rounded-md">Edit</button>
         <button onclick="deleteCurrent()" class="text-xs bg-ink-100 dark:bg-ink-800 hover:bg-rose-100 dark:hover:bg-rose-950 hover:text-rose-700 text-ink-700 dark:text-ink-200 px-3 py-1.5 rounded-md">Delete</button>
       </div>
     </div>
+
+    <!-- Appearance popover (Width / Typeface) — a lighter echo of the reference's "Aa" panel -->
+    <div id="appearance-pop" class="hidden absolute right-5 top-14 z-20 w-72 bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-xl shadow-[0_10px_30px_-10px_rgba(15,19,36,0.25)] dark:shadow-[0_10px_30px_-10px_rgba(0,0,0,0.6)] p-4">
+      <div class="flex items-center justify-between mb-3">
+        <span class="text-xs font-semibold uppercase tracking-wider text-ink-400">Reading</span>
+        <button onclick="toggleAppearance()" class="text-ink-400 hover:text-ink-700 dark:hover:text-ink-200">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="mb-3">
+        <div class="text-[10px] uppercase tracking-wider text-ink-400 font-semibold mb-1.5">Width</div>
+        <div class="grid grid-cols-3 gap-1.5" id="width-buttons">
+          <button onclick="setAppearance('width','focused')" data-w="focused" class="appearance-btn text-[11px] py-1.5 rounded-md">Focused</button>
+          <button onclick="setAppearance('width','comfort')" data-w="comfort" class="appearance-btn text-[11px] py-1.5 rounded-md">Comfort</button>
+          <button onclick="setAppearance('width','wide')"    data-w="wide"    class="appearance-btn text-[11px] py-1.5 rounded-md">Wide</button>
+        </div>
+      </div>
+      <div>
+        <div class="text-[10px] uppercase tracking-wider text-ink-400 font-semibold mb-1.5">Typeface</div>
+        <div class="grid grid-cols-2 gap-1.5" id="face-buttons">
+          <button onclick="setAppearance('face','sf-pro')"     data-f="sf-pro"     class="appearance-btn text-[11px] py-1.5 rounded-md" style="font-family: -apple-system, BlinkMacSystemFont, ui-sans-serif, sans-serif">SF Pro</button>
+          <button onclick="setAppearance('face','sf-rounded')" data-f="sf-rounded" class="appearance-btn text-[11px] py-1.5 rounded-md" style="font-family: ui-rounded, -apple-system, sans-serif">SF Rounded</button>
+          <button onclick="setAppearance('face','new-york')"   data-f="new-york"   class="appearance-btn text-[11px] py-1.5 rounded-md" style="font-family: ui-serif, 'New York', Georgia, serif">New York</button>
+          <button onclick="setAppearance('face','avenir')"     data-f="avenir"     class="appearance-btn text-[11px] py-1.5 rounded-md" style="font-family: Avenir, 'Avenir Next', -apple-system, sans-serif">Avenir</button>
+          <button onclick="setAppearance('face','charter')"    data-f="charter"    class="appearance-btn text-[11px] py-1.5 rounded-md" style="font-family: Charter, Georgia, serif">Charter</button>
+          <button onclick="setAppearance('face','sf-mono')"    data-f="sf-mono"    class="appearance-btn text-[11px] py-1.5 rounded-md" style="font-family: ui-monospace, 'SF Mono', Menlo, monospace">SF Mono</button>
+        </div>
+      </div>
+    </div>
+
     <div id="reader-view" class="flex-1 overflow-y-auto scroll-thin px-8 py-6" style="display:none">
-      <div id="reader-content" class="md-body text-sm leading-relaxed text-ink-700 dark:text-ink-200 max-w-3xl"></div>
+      <div id="reader-content-wrap" class="mx-auto">
+        <div id="reader-content" class="md-body text-[15px] leading-relaxed text-ink-700 dark:text-ink-200"></div>
+      </div>
     </div>
     <div id="reader-edit-wrap" class="flex-1 flex flex-col overflow-hidden" style="display:none">
       <input id="edit-title" placeholder="Note title"
-             class="w-full bg-transparent border-b border-ink-200 dark:border-ink-800 px-6 py-3 text-sm font-semibold outline-none">
-      <textarea id="edit-content" data-mentions="1" placeholder="Markdown… type @ to link a paper, experiment, task, manuscript, note, or memory"
-                class="flex-1 bg-transparent font-mono text-sm px-6 py-3 outline-none resize-none"></textarea>
+             class="w-full bg-transparent border-b border-ink-200 dark:border-ink-800 px-8 py-4 text-lg font-serif font-semibold outline-none">
+      <div class="flex-1 overflow-y-auto scroll-thin">
+        <div id="edit-content-wrap" class="mx-auto px-8 py-4">
+          <textarea id="edit-content" data-mentions="1" placeholder="Write here… type @ to link a paper, experiment, task, manuscript, note, or memory"
+                    class="w-full h-full min-h-[50vh] bg-transparent text-[15px] leading-relaxed outline-none resize-none"></textarea>
+        </div>
+      </div>
       <div class="border-t border-ink-200 dark:border-ink-800 px-5 py-2.5 flex items-center gap-2">
-        <button onclick="saveNote()" class="bg-brand-600 hover:bg-brand-700 text-white text-xs font-medium px-4 py-1.5 rounded-md">Save as new note</button>
+        <button onclick="saveNote()" class="bg-brand-600 hover:bg-brand-700 text-white text-xs font-medium px-4 py-1.5 rounded-md">Save</button>
         <button onclick="cancelEdit()" class="text-ink-500 dark:text-ink-300 text-xs px-3 py-1.5">Cancel</button>
-        <span class="ml-auto text-[10px] text-ink-400">Saving creates a new file in <span class="font-mono">notes/</span>. Edits to existing notes overwrite by re-creating.</span>
+        <span class="ml-auto text-[10px] text-ink-400">Saving an edit creates a fresh copy in <span class="font-mono">notes/</span> and keeps its folder.</span>
       </div>
     </div>
     <div id="reader-empty" class="flex-1 flex flex-col items-center justify-center text-ink-400 dark:text-ink-500 text-sm p-8">
       <svg class="w-16 h-16 opacity-30 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
       </svg>
-      <div class="text-base font-medium mb-1 text-ink-600 dark:text-ink-300">No note selected</div>
+      <div class="text-base font-serif font-medium mb-1 text-ink-600 dark:text-ink-300">No note selected</div>
       <div class="text-xs mb-5">Pick a note on the left, or start a new one — markdown is supported.</div>
       <button onclick="newNote()"
         class="bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold px-5 py-2.5 rounded-xl flex items-center gap-2">
@@ -72,50 +121,203 @@
 
 {% block scripts %}
 <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
+<style>
+  .appearance-btn { background: transparent; color: #5a6478; border: 1px solid #dde1e8; }
+  .dark .appearance-btn { color: #bfc6d2; border-color: #2a3142; }
+  .appearance-btn:hover { background: rgb(var(--brand-50)); }
+  .dark .appearance-btn:hover { background: rgb(var(--brand-950)); }
+  .appearance-btn.active { background: rgb(var(--brand-50)); color: rgb(var(--brand-700)); border-color: rgb(var(--brand-300)); font-weight: 600; }
+  .dark .appearance-btn.active { background: rgb(var(--brand-950)); color: rgb(var(--brand-300)); border-color: rgb(var(--brand-800)); }
+  .width-focused { max-width: 42rem; }
+  .width-comfort { max-width: 56rem; }
+  .width-wide    { max-width: 100%;  }
+
+  /* Folder tree — hover/selected rows are frosted glass, matching the search
+     bar above (the grain from .glass-panel stays faintly visible through them). */
+  .folder-row { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 10px; cursor: pointer; font-size: 13px; }
+  .folder-row:hover { background: rgb(var(--brand-50) / 0.55); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+  .dark .folder-row:hover { background: rgb(0 0 0 / 0.18); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+  .folder-row .folder-actions { opacity: 0; transition: opacity 0.15s ease; }
+  .folder-row:hover .folder-actions { opacity: 1; }
+  .note-row { display: block; width: 100%; text-align: left; padding: 8px 10px; border-radius: 10px; font-size: 13px; transition: all 0.15s ease; }
+  .note-row:hover { background: rgb(var(--brand-50) / 0.55); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+  .dark .note-row:hover { background: rgb(0 0 0 / 0.18); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+  .note-row.active { background: rgb(var(--brand-50) / 0.75); backdrop-filter: blur(10px) saturate(160%); -webkit-backdrop-filter: blur(10px) saturate(160%); border: 1px solid rgb(var(--brand-200) / 0.7); }
+  .dark .note-row.active { background: rgb(var(--brand-950) / 0.6); backdrop-filter: blur(10px) saturate(160%); -webkit-backdrop-filter: blur(10px) saturate(160%); border-color: rgb(var(--brand-800) / 0.7); }
+</style>
 <script>
 let currentNoteId = null;
 let currentRawContent = '';
+let currentNoteFolder = null;
+let allNotes = [];
+let allFolders = [];
+let expandedFolders = new Set(JSON.parse(localStorage.getItem('labui-notes-expanded') || '[]'));
 let mdReady = false;
 try { marked.use({ gfm: true, breaks: true }); if (window.markedKatex) marked.use(markedKatex({ throwOnError: false })); mdReady = true; } catch (e) {}
 
 document.addEventListener('DOMContentLoaded', async () => {
-  await loadNotes();
+  initAppearance();
+  await loadAll();
   // Deep link from an @mention chip: /research/notes?open=<id>
   const openId = new URLSearchParams(location.search).get('open');
   if (openId) openNote(openId);
 });
 
-async function loadNotes() {
-  const list = document.getElementById('notes-list');
+// ── Load + render sidebar (folders + notes) ────────────────────
+async function loadAll() {
   try {
-    const r = await fetch('/api/rag/notes');
-    const notes = await r.json();
-    document.getElementById('notes-count').textContent = notes.length;
-    if (!notes.length) {
-      list.innerHTML = '<div class="text-ink-400 text-center py-8 text-xs">No notes yet.</div>';
-      return;
-    }
-    list.innerHTML = notes.map(n => `
-      <button onclick="openNote('${escapeJs(n.id)}')"
-              class="w-full text-left px-3 py-2.5 rounded-lg border ${n.id === currentNoteId ? 'border-brand-400 bg-brand-50 dark:bg-brand-950' : 'border-transparent hover:border-ink-200 dark:hover:border-ink-700 hover:bg-ink-50 dark:hover:bg-ink-950'} transition">
-        <div class="font-medium text-xs truncate">${escapeHtml(n.title)}</div>
-        <div class="text-[10px] text-ink-400 mt-0.5 truncate">${new Date(n.modified * 1000).toLocaleString()}</div>
-        <div class="text-[11px] text-ink-500 dark:text-ink-400 mt-1 line-clamp-2">${escapeHtml(n.preview)}</div>
-      </button>
-    `).join('');
+    const [notesRes, foldersRes] = await Promise.all([
+      fetch('/api/rag/notes'), fetch('/api/rag/notes/folders'),
+    ]);
+    allNotes = await notesRes.json();
+    allFolders = await foldersRes.json();
   } catch (e) {
-    list.innerHTML = `<div class="text-rose-500 text-xs">${escapeHtml(e.message)}</div>`;
+    allNotes = []; allFolders = [];
   }
+  renderSidebar();
+  renderFolderSelect();
 }
 
+function renderSidebar() {
+  const body = document.getElementById('sidebar-body');
+  const q = (document.getElementById('note-search').value || '').trim().toLowerCase();
+  const filtered = q ? allNotes.filter(n => n.title.toLowerCase().includes(q)) : allNotes;
+
+  if (!allNotes.length) {
+    body.innerHTML = '<div class="text-ink-400 text-center py-8 text-xs">No notes yet.</div>';
+    return;
+  }
+
+  const byFolder = {};
+  const unfiled = [];
+  filtered.forEach(n => {
+    if (n.folder) { (byFolder[n.folder] = byFolder[n.folder] || []).push(n); }
+    else { unfiled.push(n); }
+  });
+
+  let html = '';
+  allFolders.forEach(fo => {
+    const notes = byFolder[fo.id] || [];
+    if (q && !notes.length) return; // hide empty folders while searching
+    const open = expandedFolders.has(fo.id);
+    html += `
+      <div class="mb-1">
+        <div class="folder-row" onclick="toggleFolder('${fo.id}')">
+          <svg class="w-3.5 h-3.5 text-ink-400 flex-shrink-0 transition-transform ${open ? 'rotate-90' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+          </svg>
+          <svg class="w-4 h-4 text-brand-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
+          </svg>
+          <span class="font-semibold flex-1 truncate">${escapeHtml(fo.name)}</span>
+          <span class="text-ink-400 text-[11px]">${fo.count}</span>
+          <span class="folder-actions flex items-center gap-1 ml-1">
+            <button onclick="event.stopPropagation(); newNote('${fo.id}')" title="New note here" class="text-ink-300 hover:text-brand-600 px-0.5">+</button>
+            <button onclick="event.stopPropagation(); renameFolder('${fo.id}','${escapeJs(fo.name)}')" title="Rename" class="text-ink-300 hover:text-brand-600 px-0.5">✎</button>
+            <button onclick="event.stopPropagation(); deleteFolder('${fo.id}','${escapeJs(fo.name)}')" title="Delete folder" class="text-ink-300 hover:text-rose-500 px-0.5">✕</button>
+          </span>
+        </div>
+        ${open ? `<div class="ml-6 space-y-0.5">${notes.map(noteRowHtml).join('') || '<div class="text-ink-400 text-[11px] px-2 py-1.5">Empty</div>'}</div>` : ''}
+      </div>`;
+  });
+
+  html += `
+    <button onclick="newNote()" class="w-full text-left px-2 py-2 my-1 text-ink-500 dark:text-ink-400 hover:text-brand-600 text-xs font-medium flex items-center gap-1.5">
+      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+      New Note
+    </button>
+    <div class="border-t border-ink-100 dark:border-ink-800 my-1"></div>
+    <div class="space-y-0.5">${unfiled.map(noteRowHtml).join('') || (allFolders.length ? '' : '<div class="text-ink-400 text-center py-6 text-xs">No notes yet.</div>')}</div>`;
+
+  body.innerHTML = html;
+}
+
+function noteRowHtml(n) {
+  const active = n.id === currentNoteId;
+  return `
+    <button onclick="openNote('${escapeJs(n.id)}')" class="note-row ${active ? 'active' : ''}">
+      <div class="font-medium truncate">${escapeHtml(n.title)}</div>
+      <div class="text-[10px] text-ink-400 mt-0.5 truncate">${new Date(n.modified * 1000).toLocaleDateString()}</div>
+      <div class="text-[11px] text-ink-500 dark:text-ink-400 mt-1 line-clamp-2">${escapeHtml(n.preview)}</div>
+    </button>`;
+}
+
+function toggleFolder(id) {
+  if (expandedFolders.has(id)) expandedFolders.delete(id); else expandedFolders.add(id);
+  localStorage.setItem('labui-notes-expanded', JSON.stringify([...expandedFolders]));
+  renderSidebar();
+}
+
+function renderFolderSelect() {
+  const sel = document.getElementById('folder-select');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">Unfiled</option>' +
+    allFolders.map(fo => `<option value="${fo.id}">${escapeHtml(fo.name)}</option>`).join('');
+  sel.value = cur;
+}
+
+// ── Folders CRUD ─────────────────────────────────────────────
+async function newFolder() {
+  const name = prompt('Folder name');
+  if (!name || !name.trim()) return;
+  try {
+    const r = await fetch('/api/rag/notes/folders', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: name.trim() }),
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    expandedFolders.add(d.id);
+    localStorage.setItem('labui-notes-expanded', JSON.stringify([...expandedFolders]));
+    await loadAll();
+  } catch (e) { toast('Could not create folder: ' + e.message); }
+}
+
+async function renameFolder(id, oldName) {
+  const name = prompt('Rename folder', oldName);
+  if (!name || !name.trim() || name.trim() === oldName) return;
+  try {
+    await fetch('/api/rag/notes/folders/' + encodeURIComponent(id), {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: name.trim() }),
+    });
+    await loadAll();
+  } catch (e) { toast('Rename failed: ' + e.message); }
+}
+
+async function deleteFolder(id, name) {
+  if (!confirm(`Delete folder "${name}"? Notes inside it are kept, just unfiled.`)) return;
+  try {
+    await fetch('/api/rag/notes/folders/' + encodeURIComponent(id), { method: 'DELETE' });
+    expandedFolders.delete(id);
+    await loadAll();
+  } catch (e) { toast('Delete failed: ' + e.message); }
+}
+
+async function moveCurrentNote(folderId) {
+  if (!currentNoteId) return;
+  try {
+    await fetch('/api/rag/notes/' + encodeURIComponent(currentNoteId) + '/folder', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folder: folderId || null }),
+    });
+    currentNoteFolder = folderId || null;
+    await loadAll();
+  } catch (e) { toast('Move failed: ' + e.message); }
+}
+
+// ── Reader / editor ──────────────────────────────────────────
 async function openNote(id) {
   currentNoteId = id;
-  loadNotes(); // re-highlight
+  const n = allNotes.find(x => x.id === id);
+  currentNoteFolder = n ? (n.folder || null) : null;
+  renderSidebar();
+  document.getElementById('folder-select').value = currentNoteFolder || '';
   try {
     const r = await fetch('/api/rag/notes/' + encodeURIComponent(id));
     const d = await r.json();
     currentRawContent = d.content || '';
-    const {title, body} = parseFrontmatter(currentRawContent);
+    const { title, body } = parseFrontmatter(currentRawContent);
     showReader(title || id, body);
   } catch (e) {
     showReader('Failed to load', `<div class="text-rose-500">${escapeHtml(e.message)}</div>`);
@@ -123,7 +325,6 @@ async function openNote(id) {
 }
 
 function parseFrontmatter(raw) {
-  // YAML frontmatter ---\n...\n--- at top.
   let title = '', body = raw, meta = '';
   const m = raw.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
   if (m) {
@@ -138,12 +339,11 @@ function parseFrontmatter(raw) {
     if (dm) parts.push(dm[1].trim());
     meta = parts.join(' · ');
   }
-  // Strip a redundant top-level # heading if it duplicates the title
   const h1 = body.match(/^#\s+(.+?)\n/);
   if (h1 && title && h1[1].trim() === title.trim()) {
     body = body.slice(h1[0].length);
   }
-  return {title, body, meta};
+  return { title, body, meta };
 }
 
 function showReader(title, content) {
@@ -152,7 +352,7 @@ function showReader(title, content) {
   document.getElementById('reader-view').style.display = 'block';
   document.getElementById('reader-header').style.display = 'flex';
   document.getElementById('reader-title').textContent = title;
-  const {meta} = parseFrontmatter(currentRawContent);
+  const { meta } = parseFrontmatter(currentRawContent);
   document.getElementById('reader-meta').textContent = meta;
   document.getElementById('reader-edit').textContent = 'Edit';
   let html = mdReady ? marked.parse(window.normalizeMath ? window.normalizeMath(content) : content) : `<pre>${escapeHtml(content)}</pre>`;
@@ -163,12 +363,13 @@ function showReader(title, content) {
 function toggleEdit() {
   const editingNow = document.getElementById('reader-edit-wrap').style.display !== 'none';
   if (editingNow) { showReader(document.getElementById('reader-title').textContent, parseFrontmatter(currentRawContent).body); return; }
-  const {title, body} = parseFrontmatter(currentRawContent);
+  const { title, body } = parseFrontmatter(currentRawContent);
   document.getElementById('reader-view').style.display = 'none';
   document.getElementById('reader-edit-wrap').style.display = 'flex';
   document.getElementById('edit-title').value = title || currentNoteId || '';
   document.getElementById('edit-content').value = body;
   document.getElementById('reader-edit').textContent = 'Preview';
+  if (window.attachMentions) attachMentions(document.getElementById('edit-content'));
 }
 
 function cancelEdit() { toggleEdit(); }
@@ -178,45 +379,104 @@ async function saveNote() {
   const content = document.getElementById('edit-content').value;
   try {
     const r = await fetch('/api/rag/notes', {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({title, content, agent: ''})
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, content, agent: '', folder: currentNoteFolder || null }),
     });
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const d = await r.json();
     toast('Saved as ' + d.id);
-    await loadNotes();
+    await loadAll();
     openNote(d.id);
   } catch (e) {
-    alert('Save failed: ' + e.message);
+    toast('Save failed: ' + e.message);
   }
 }
 
-function newNote() {
+function newNote(folderId) {
   currentNoteId = null;
   currentRawContent = '';
+  currentNoteFolder = folderId || null;
   document.getElementById('reader-view').style.display = 'none';
   document.getElementById('reader-empty').style.display = 'none';
   document.getElementById('reader-header').style.display = 'flex';
   document.getElementById('reader-title').textContent = 'New note';
   document.getElementById('reader-meta').textContent = '';
+  document.getElementById('folder-select').value = currentNoteFolder || '';
   document.getElementById('reader-edit-wrap').style.display = 'flex';
   document.getElementById('edit-title').value = '';
   document.getElementById('edit-content').value = '';
   document.getElementById('reader-edit').textContent = 'Preview';
+  if (window.attachMentions) attachMentions(document.getElementById('edit-content'));
   document.getElementById('edit-title').focus();
+  renderSidebar();
 }
 
 async function deleteCurrent() {
   if (!currentNoteId) return;
   if (!confirm('Delete this note?')) return;
-  await fetch('/api/rag/notes/' + encodeURIComponent(currentNoteId), {method: 'DELETE'});
+  await fetch('/api/rag/notes/' + encodeURIComponent(currentNoteId), { method: 'DELETE' });
   currentNoteId = null;
   document.getElementById('reader-view').style.display = 'none';
   document.getElementById('reader-edit-wrap').style.display = 'none';
   document.getElementById('reader-header').style.display = 'none';
   document.getElementById('reader-empty').style.display = 'flex';
-  loadNotes();
+  loadAll();
 }
+
+// ── Reading appearance (Width / Typeface) — global preference, localStorage ──
+// Typefaces mirror the reference app's picker exactly. All six are native
+// macOS system/licensed fonts — no download, rendered by the OS itself on a
+// Mac. Non-Mac browsers fall through each stack to a close web-font/generic
+// equivalent so nothing breaks off-Mac.
+const NOTE_TYPEFACES = {
+  'sf-pro':     "-apple-system, BlinkMacSystemFont, ui-sans-serif, \"SF Pro Text\", \"Helvetica Neue\", Inter, sans-serif",
+  'sf-rounded': "ui-rounded, \"SF Pro Rounded\", -apple-system, BlinkMacSystemFont, sans-serif",
+  'new-york':   "ui-serif, \"New York\", \"Source Serif 4\", Georgia, serif",
+  'avenir':     "Avenir, \"Avenir Next\", -apple-system, BlinkMacSystemFont, sans-serif",
+  'charter':    "Charter, \"Source Serif 4\", Georgia, serif",
+  'sf-mono':    "ui-monospace, \"SF Mono\", Menlo, \"IBM Plex Mono\", monospace",
+};
+
+function initAppearance() {
+  const width = localStorage.getItem('labui-notes-width') || 'comfort';
+  const face = localStorage.getItem('labui-notes-face') || 'sf-pro';
+  applyAppearance(width, face);
+}
+
+function setAppearance(kind, value) {
+  const width = kind === 'width' ? value : (localStorage.getItem('labui-notes-width') || 'comfort');
+  const face = kind === 'face' ? value : (localStorage.getItem('labui-notes-face') || 'sf-pro');
+  localStorage.setItem('labui-notes-width', width);
+  localStorage.setItem('labui-notes-face', face);
+  applyAppearance(width, face);
+}
+
+function applyAppearance(width, face) {
+  const wraps = [document.getElementById('reader-content-wrap'), document.getElementById('edit-content-wrap')];
+  wraps.forEach(el => {
+    if (!el) return;
+    el.classList.remove('width-focused', 'width-comfort', 'width-wide');
+    el.classList.add('width-' + width);
+  });
+  const stack = NOTE_TYPEFACES[face] || NOTE_TYPEFACES['sf-pro'];
+  const readerContent = document.getElementById('reader-content');
+  const editContent = document.getElementById('edit-content');
+  if (readerContent) readerContent.style.fontFamily = stack;
+  if (editContent) editContent.style.fontFamily = stack;
+  document.querySelectorAll('#width-buttons .appearance-btn').forEach(b => b.classList.toggle('active', b.dataset.w === width));
+  document.querySelectorAll('#face-buttons .appearance-btn').forEach(b => b.classList.toggle('active', b.dataset.f === face));
+}
+
+function toggleAppearance() {
+  document.getElementById('appearance-pop').classList.toggle('hidden');
+}
+document.addEventListener('click', (e) => {
+  const pop = document.getElementById('appearance-pop');
+  if (!pop || pop.classList.contains('hidden')) return;
+  if (!pop.contains(e.target) && e.target.id !== 'appearance-pop') {
+    if (!e.target.closest('[onclick="toggleAppearance()"]')) pop.classList.add('hidden');
+  }
+});
 
 function toast(msg) {
   const t = document.createElement('div');
@@ -226,6 +486,6 @@ function toast(msg) {
   setTimeout(() => t.remove(), 2500);
 }
 function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-function escapeJs(s)   { return String(s).replace(/'/g, "\\'"); }
+function escapeJs(s)   { return String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'"); }
 </script>
 {% endblock %}

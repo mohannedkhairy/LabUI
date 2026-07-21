@@ -116,6 +116,30 @@
   <aside class="col-span-12 xl:col-span-4 space-y-4">
     <div class="tile">
       <div class="flex items-center justify-between mb-3">
+        <h3 class="text-sm font-semibold text-ink-800 dark:text-ink-100">Tasks</h3>
+        <div class="flex items-center gap-2">
+          <span class="chip">{{ linked_tasks | length }}</span>
+          <a href="/tasks?new=1&amp;experiment_id={{ exp.id }}" title="Add a task for this experiment"
+             class="text-brand-600 dark:text-brand-300 hover:underline text-xs">+ Add</a>
+        </div>
+      </div>
+      {% if linked_tasks %}
+      <div class="space-y-1.5">
+        {% for t in linked_tasks %}
+        <a href="/tasks?open={{ t.id }}" class="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-ink-50 dark:hover:bg-ink-950 transition text-sm">
+          <span class="flex-shrink-0">{{ '✓' if t.status == 'done' else '☐' }}</span>
+          <span class="flex-1 min-w-0 truncate {% if t.status == 'done' %}line-through text-ink-400{% else %}text-ink-700 dark:text-ink-200{% endif %}">{{ t.title }}</span>
+          {% if t.due_date %}<span class="text-[10px] text-ink-400 font-mono flex-shrink-0">{{ t.due_date }}</span>{% endif %}
+        </a>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="text-[11px] text-ink-400 text-center py-3">No tasks linked yet.</div>
+      {% endif %}
+    </div>
+
+    <div class="tile">
+      <div class="flex items-center justify-between mb-3">
         <h3 class="text-sm font-semibold text-ink-800 dark:text-ink-100">Linked papers</h3>
         <span class="chip">{{ exp.linked_papers | length }}</span>
       </div>

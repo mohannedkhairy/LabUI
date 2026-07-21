@@ -13,15 +13,15 @@
   /* Make the page eat the viewport. */
   .graph-shell { height: calc(100vh - 8.5rem); min-height: 540px; }
   .graph-svg   { width: 100%; height: 100%; cursor: grab; display: block; background:
-    radial-gradient(circle at 30% 20%, rgba(94,107,240,0.06), transparent 40%),
-    radial-gradient(circle at 80% 70%, rgba(94,107,240,0.04), transparent 40%); }
+    radial-gradient(circle at 30% 20%, rgba(79, 140, 92,0.06), transparent 40%),
+    radial-gradient(circle at 80% 70%, rgba(79, 140, 92,0.04), transparent 40%); }
   .dark .graph-svg { background:
-    radial-gradient(circle at 30% 20%, rgba(94,107,240,0.10), transparent 40%),
-    radial-gradient(circle at 80% 70%, rgba(94,107,240,0.06), transparent 40%); }
+    radial-gradient(circle at 30% 20%, rgba(79, 140, 92,0.10), transparent 40%),
+    radial-gradient(circle at 80% 70%, rgba(79, 140, 92,0.06), transparent 40%); }
   .graph-svg:active { cursor: grabbing; }
   .graph-node circle { stroke: #ffffff; stroke-width: 1.2; transition: stroke-width 0.15s; }
   .dark .graph-node circle { stroke: #0a0d14; }
-  .graph-node.selected circle { stroke-width: 3; stroke: #5e6bf0; }
+  .graph-node.selected circle { stroke-width: 3; stroke: #4f8c5c; }
   .graph-node.dim circle, .graph-node.dim text { opacity: 0.15; }
   .graph-link { stroke-linecap: round; }
   .graph-label {
@@ -39,9 +39,9 @@
     background: rgba(255,255,255,0.92); color: #3e4759; backdrop-filter: blur(6px);
     box-shadow: 0 1px 3px rgba(0,0,0,0.12); cursor: pointer; transition: all 0.15s;
   }
-  .ctrl-btn:hover { background: #eef1ff; color: #4e58d8; }
+  .ctrl-btn:hover { background: #f1f7f2; color: #3f7449; }
   .dark .ctrl-btn { background: rgba(28,34,48,0.92); color: #bfc6d2; }
-  .dark .ctrl-btn:hover { background: #1d2050; color: #a3b1ff; }
+  .dark .ctrl-btn:hover { background: #14261a; color: #9bc5a5; }
 </style>
 
 <!-- Stats strip -->
