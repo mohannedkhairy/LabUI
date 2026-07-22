@@ -20,6 +20,20 @@ CREATE TABLE IF NOT EXISTS manuscript (
     updated_at      TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS paper_links (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    manuscript_id   TEXT NOT NULL REFERENCES manuscript(id) ON DELETE CASCADE,
+    rag_paper_id    TEXT NOT NULL,
+    link_type       TEXT NOT NULL DEFAULT 'related'
+                    CHECK (link_type IN ('cites', 'contrasts', 'supports',
+                                         'background', 'extends', 'related')),
+    note            TEXT NOT NULL DEFAULT '',
+    created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    UNIQUE (manuscript_id, rag_paper_id, link_type)
+);
+CREATE INDEX IF NOT EXISTS idx_paper_links_manuscript ON paper_links(manuscript_id);
+CREATE INDEX IF NOT EXISTS idx_paper_links_rag_paper  ON paper_links(rag_paper_id);
+
 CREATE TABLE IF NOT EXISTS journal (
     id                  TEXT PRIMARY KEY,
     name                TEXT NOT NULL,

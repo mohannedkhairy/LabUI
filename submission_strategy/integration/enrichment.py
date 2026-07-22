@@ -40,7 +40,8 @@ def enrich_recommendations(journal_results: list, manuscript_data: dict) -> dict
     """
     try:
         # Load RAG modules
-        sys.path.insert(0, str(RAG_ROOT))
+        if str(RAG_ROOT) not in sys.path:
+            sys.path.insert(0, str(RAG_ROOT))
         from retrieval.graph import get_graph_data as rag_get_graph
         from retrieval.graph import search_entities_fts as rag_search_entities
         from memory import get_all_memories as rag_get_memories
@@ -62,6 +63,13 @@ def enrich_recommendations(journal_results: list, manuscript_data: dict) -> dict
         # Get memories
         memories = rag_get_memories(limit=10)
         
+        rag_conn = sqlite3.connect(str(RAG_DB_PATH))
+        try:
+            papers_indexed = rag_conn.execute("SELECT COUNT(*) FROM papers").fetchone()[0]
+            chunks_indexed = rag_conn.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
+        finally:
+            rag_conn.close()
+
         # Build enriched result
         return {
             'journal_recommendations': journal_results,
@@ -80,8 +88,8 @@ def enrich_recommendations(journal_results: list, manuscript_data: dict) -> dict
                 for m in memories
             ],
             'research_summary': {
-                'total_papers_indexed': 1470,
-                'total_chunks_indexed': 15000,
+                'total_papers_indexed': papers_indexed,
+                'total_chunks_indexed': chunks_indexed,
                 'total_memories': len(memories),
                 'total_entities': len(entities),
             },
@@ -108,9 +116,11 @@ def get_relevant_papers_for_recommendations(manuscript_data: dict, limit: int = 
     """
     try:
         # Load RAG modules
-        sys.path.insert(0, str(RAG_ROOT))
+        if str(RAG_ROOT) not in sys.path:
+            sys.path.insert(0, str(RAG_ROOT))
         import config as rag_config
         from retrieval.embed import load_embed_model, embed_query
+        from retrieval.rerank import load_reranker
         from retrieval.search import search as rag_search
         
         # Get keywords from manuscript
@@ -126,7 +136,12 @@ def get_relevant_papers_for_recommendations(manuscript_data: dict, limit: int = 
         # Embed and search
         tok, emb = load_embed_model()
         query_vec = embed_query(tok, emb, str(keywords[0]))
-        results = rag_search(str(keywords[0]), query_vec, limit=limit)
+        results = rag_search(
+            str(keywords[0]),
+            query_vec,
+            load_reranker(),
+            top_k=limit,
+        )
         
         return {
             'rag_status': 'success',

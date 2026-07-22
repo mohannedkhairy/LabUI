@@ -48,20 +48,30 @@ def search_rag(query: str, limit: int = 10) -> dict:
         }
     
     # Embed and search (import here to avoid circular imports)
+    if str(RAG_ROOT) not in sys.path:
+        sys.path.insert(0, str(RAG_ROOT))
     from retrieval.embed import load_embed_model, embed_query
+    from retrieval.rerank import load_reranker
     from retrieval.search import search as rag_search
     
     tok, emb = load_embed_model()
     query_vec = embed_query(tok, emb, query)
-    results = rag_search(query, query_vec, limit=limit)
+    results = rag_search(query, query_vec, load_reranker(), top_k=limit)
+
+    rag_conn = sqlite3.connect(str(RAG_DB_PATH))
+    try:
+        papers_indexed = rag_conn.execute("SELECT COUNT(*) FROM papers").fetchone()[0]
+        chunks_indexed = rag_conn.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
+    finally:
+        rag_conn.close()
     
     return {
         'rag_status': 'success',
         'results': results,
         'total': len(results),
         'rag_source': {
-            'papers_indexed': 1470,
-            'chunks_indexed': 15000,
+            'papers_indexed': papers_indexed,
+            'chunks_indexed': chunks_indexed,
         }
     }
 
@@ -78,6 +88,7 @@ def search_journals(query: str, limit: int = 10) -> dict:
         dict with journal matches and scores
     """
     jfr_conn = sqlite3.connect(str(JFR_DB_PATH))
+    jfr_conn.row_factory = sqlite3.Row
     
     # Search journals by name/publisher
     journals = jfr_conn.execute("""

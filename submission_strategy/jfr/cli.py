@@ -14,6 +14,7 @@ from rich.table import Table
 
 from jfr.config import get_settings, load_policy
 from jfr.db import init_db, get_conn
+from jfr import __version__
 
 app = typer.Typer(
     name="jfr",
@@ -47,6 +48,33 @@ rag_lab_app = typer.Typer(help="Research lab commands", no_args_is_help=True)
 rag_app.add_typer(rag_lab_app, name="lab")
 
 console = Console()
+
+
+def _version_callback(value: bool):
+    if value:
+        typer.echo(__version__)
+        raise typer.Exit()
+
+
+@app.callback()
+def main(
+    version: bool = typer.Option(
+        False,
+        "--version",
+        callback=_version_callback,
+        is_eager=True,
+        help="Show the installed version and exit.",
+    ),
+):
+    """Journal-Fit Recommender and Submission Tracker."""
+
+
+def _web_base_url() -> str:
+    settings = get_settings()
+    host = settings.web_host
+    if host in {"0.0.0.0", "::", "[::]"}:
+        host = "127.0.0.1"
+    return f"http://{host}:{settings.web_port}"
 
 
 def _get_conn():
@@ -526,14 +554,6 @@ def submission_comment(
 
 # ── rag: search ─────────────────────────────────────
 
-def _web_base() -> str:
-    """Base URL of the running web UI, honouring JFR_WEB_HOST/JFR_WEB_PORT
-    (start.sh exports those; the old hardcoded :8765 never matched LabUI's
-    default :8770)."""
-    s = get_settings()
-    host = s.web_host if s.web_host not in ("", "0.0.0.0") else "127.0.0.1"
-    return f"http://{host}:{s.web_port}"
-
 
 @rag_search_app.command("query")
 def rag_search_query(
@@ -542,17 +562,18 @@ def rag_search_query(
 ):
     """Search your paper collection via RAG."""
     import urllib.request, json
+    base_url = _web_base_url()
     try:
-        # The web API is POST /api/rag/search with a JSON body (a GET with
-        # query params returns 405).
-        req = urllib.request.Request(
-            f"{_web_base()}/api/rag/search",
-            data=json.dumps({"query": query, "top_k": limit}).encode(),
+        body = json.dumps({"query": query, "top_k": limit}).encode()
+        request = urllib.request.Request(
+            f"{base_url}/api/rag/search",
+            data=body,
             headers={"Content-Type": "application/json"},
+            method="POST",
         )
-        data = json.loads(urllib.request.urlopen(req, timeout=60).read())
+        data = json.loads(urllib.request.urlopen(request, timeout=60).read())
     except Exception as e:
-        rprint(f"[red]Error:[/red] Could not reach web UI at {_web_base()} — run './start.sh' or 'jfr web serve' first. ({e})")
+        rprint(f"[red]Error:[/red] Could not reach web UI at {base_url} — run './start.sh' or 'jfr web serve' first. ({e})")
         raise typer.Exit(1)
 
     results = data.get("results", [])
@@ -604,20 +625,22 @@ def rag_link_add(
     note: str = typer.Option("", "-n", "--note", help="Optional note about the link"),
 ):
     """Link a RAG paper to a manuscript."""
-    import urllib.request, urllib.parse, json, http.client, ssl
+    import urllib.request, urllib.parse, json
+    base_url = _web_base_url()
     try:
-        ctx = ssl.create_default_context()
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE
-        _s = get_settings()
-        _host = _s.web_host if _s.web_host not in ("", "0.0.0.0") else "127.0.0.1"
-        conn = http.client.HTTPConnection(_host, port=_s.web_port, timeout=10)
-        body = f"ms_id={urllib.parse.quote(manuscript_id)}&paper_id={urllib.parse.quote(paper_id)}&link_type={urllib.parse.quote(link_type)}&note={urllib.parse.quote(note)}"
-        headers = {"Content-Type": "application/x-www-form-urlencoded"}
-        conn.request("POST", "/api/rag/links", body, headers)
-        resp = conn.getresponse()
-        data = json.loads(resp.read())
-        conn.close()
+        body = urllib.parse.urlencode({
+            "ms_id": manuscript_id,
+            "paper_id": paper_id,
+            "link_type": link_type,
+            "note": note,
+        }).encode()
+        request = urllib.request.Request(
+            f"{base_url}/api/rag/links",
+            data=body,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            method="POST",
+        )
+        data = json.loads(urllib.request.urlopen(request, timeout=15).read())
 
         if isinstance(data, dict) and "success" in data and data["success"]:
             rprint(f"[green]\u2713[/green] Linked [bold]{paper_id}[/bold] to [bold]{manuscript_id}[/bold] as '{link_type}'")
@@ -626,17 +649,18 @@ def rag_link_add(
         else:
             rprint(f"[red]Error:[/red] {data.get('error', 'Link creation failed')}")
             raise typer.Exit(1)
-    except urllib.error.URLError as e:
-        rprint(f"[red]Error:[/red] Could not reach web UI — run 'jfr web serve' first. ({e})")
+    except Exception as e:
+        rprint(f"[red]Error:[/red] Could not reach web UI at {base_url} — run 'jfr web serve' first. ({e})")
         raise typer.Exit(1)
 
 
 @rag_link_app.command("list")
 def rag_link_list(ms_id: str = typer.Argument(..., help="Manuscript ID to list papers for")):
     """List all RAG papers linked to a manuscript."""
-    import urllib.request, json
+    import urllib.request, urllib.parse, json
+    base_url = _web_base_url()
     try:
-        url = f"{_web_base()}/api/rag/links/{ms_id}"
+        url = f"{base_url}/api/rag/links/{urllib.parse.quote(ms_id, safe='')}"
         resp = json.loads(urllib.request.urlopen(url, timeout=15).read())
         links = resp.get("links", [])
     except Exception as e:
@@ -675,8 +699,9 @@ def rag_link_list(ms_id: str = typer.Argument(..., help="Manuscript ID to list p
 def rag_lab_stats():
     """Show research lab statistics."""
     import urllib.request, json
+    base_url = _web_base_url()
     try:
-        resp = json.loads(urllib.request.urlopen(f"{_web_base()}/api/rag/lab/stats", timeout=15).read())
+        resp = json.loads(urllib.request.urlopen(f"{base_url}/api/rag/lab/stats", timeout=15).read())
     except Exception as e:
         rprint(f"[red]Error:[/red] Could not connect ({e})")
         raise typer.Exit(1)
@@ -704,9 +729,10 @@ def rag_lab_stats():
 @rag_lab_app.command("open")
 def rag_lab_open(ms_id: str = typer.Argument(None, help="Manuscript to open")):
     """Open the research lab in a browser."""
-    import webbrowser
-    url = f"{_web_base()}/lab" + (f"?ms={ms_id}" if ms_id else "")
-    rprint(f"[cyan]\u2192[/cyan] Opening Research Lab at [bold]{_web_base()}/lab[/bold]")
+    import urllib.parse, webbrowser
+    base_url = _web_base_url()
+    url = f"{base_url}/lab" + (f"?ms={urllib.parse.quote(ms_id)}" if ms_id else "")
+    rprint(f"[cyan]\u2192[/cyan] Opening Research Lab at [bold]{url}[/bold]")
     try:
         webbrowser.open(url)
     except Exception as e:

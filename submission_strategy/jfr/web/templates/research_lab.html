@@ -10,7 +10,7 @@
 <div class="grid grid-cols-12 gap-6">
   
   <!-- Left: Manuscript selector + RAG search -->
-  <div class="col-span-4 space-y-6">
+  <div class="col-span-12 lg:col-span-4 space-y-6">
     
     <!-- Manuscript selector -->
     <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
@@ -36,12 +36,11 @@
     <!-- RAG Search -->
     <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
       <h3 class="font-semibold text-gray-700 mb-3">Literature Search</h3>
-      <form class="flex gap-2 mb-4">
+      <form class="flex gap-2 mb-4" onsubmit="event.preventDefault(); doRagSearch();">
         <input type="text" 
                id="search-query"
                placeholder="Search papers..." 
-               class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-300 focus:border-indigo-300"
-               onkeypress="if(event.key==='Enter') doRagSearch()">
+               class="flex-1 min-w-0 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-300 focus:border-indigo-300">
         <button type="button" 
                 onclick="doRagSearch()"
                 class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-lg transition">
@@ -50,7 +49,7 @@
       </form>
       
       <!-- Search results -->
-      <div id="rag-results" class="space-y-2 max-h-96 overflow-y-auto">
+      <div id="rag-results" class="space-y-2 max-h-96 overflow-y-auto" aria-live="polite">
         <div class="text-sm text-gray-400 italic p-4">
           Enter a query to search your paper collection...
         </div>
@@ -82,17 +81,17 @@
   </div>
   
   <!-- Right: Manuscript details + Linked papers -->
-  <div class="col-span-8 space-y-6">
+  <div class="col-span-12 lg:col-span-8 space-y-6">
     
     <!-- Manuscript details (shown when ms_id selected) -->
     {% if selected_ms %}
     <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-      <div class="flex justify-between items-start mb-4">
+      <div class="flex flex-col sm:flex-row justify-between items-start gap-4 mb-4">
         <div>
-          <h3 class="text-xl font-bold text-gray-800">{{ selected_ms[:60] }}...</h3>
+          <h3 class="text-xl font-bold text-gray-800">{{ selected_manuscript.title }}</h3>
           <div class="text-sm text-gray-500">{{ selected_ms }}</div>
         </div>
-        <div class="flex gap-2">
+        <div class="flex gap-2 flex-wrap">
           <a href="/manuscripts/{{ selected_ms }}/edit" class="px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded-lg transition">Edit</a>
           <a href="/recommend?ms={{ selected_ms }}" class="px-3 py-1 text-xs bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded-lg transition">Journal Recs</a>
           <a href="/submissions?ms={{ selected_ms }}" class="px-3 py-1 text-xs bg-green-100 hover:bg-green-200 text-green-700 rounded-lg transition">Submissions</a>
@@ -102,7 +101,7 @@
       <!-- Abstract preview -->
       <div class="p-3 bg-gray-50 rounded-lg text-sm text-gray-600 mb-4">
         <div class="font-medium mb-1">Abstract:</div>
-        <p class="text-xs leading-relaxed">{{ selected_ms[:200] }}...</p>
+        <p class="text-xs leading-relaxed">{{ selected_manuscript.abstract[:500] }}{% if selected_manuscript.abstract|length > 500 %}...{% endif %}</p>
       </div>
       
       <!-- Quick actions -->
@@ -142,130 +141,161 @@
   </div>
 </div>
 
-<!-- Search Results Modal (hidden by default) -->
-<div id="rag-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-8">
-  <div class="bg-white rounded-xl p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto">
-    <div class="flex justify-between items-center mb-4">
-      <h4 class="font-bold text-gray-800">Search Results</h4>
-      <button onclick="closeRagModal()" class="text-gray-500 hover:text-gray-700 text-xl">&times;</button>
-    </div>
-    <div id="rag-modal-results" class="space-y-3">
-      <!-- Results injected here -->
-    </div>
-  </div>
-</div>
-
 <script>
-// Page logic lives inline (like the other templates) — the app serves no
-// /static mount, so an external lab.js would 404 and leave every control dead.
-const LAB_MS_ID = {{ selected_ms | tojson }};
-const LAB_MS_TITLE = {{ (manuscripts | selectattr('id', 'equalto', selected_ms) | map(attribute='title') | first | default('')) | tojson }};
+const selectedManuscriptId = {{ selected_ms|tojson }};
+const selectedManuscript = {{ selected_manuscript|tojson }};
+let linkedPaperIds = new Set();
 
-function esc(s) {
-  const d = document.createElement('div');
-  d.textContent = s == null ? '' : String(s);
-  return d.innerHTML;
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
 
-function renderResults(container, results, withLink) {
-  if (!results.length) {
-    container.innerHTML = '<div class="text-sm text-gray-400 italic p-4">No results.</div>';
+function resultCard(result) {
+  const title = result.title || result.paper_id || "Untitled paper";
+  const authors = Array.isArray(result.authors)
+    ? result.authors.join(", ")
+    : (result.authors || "");
+  const meta = [authors, result.year].filter(Boolean).join(" · ");
+  const text = (result.text || result.snippet || "").slice(0, 260);
+  const linkButton = selectedManuscriptId && result.paper_id
+    ? `<button type="button" data-paper-id="${escapeHtml(result.paper_id)}" class="link-paper px-2 py-1 text-xs bg-yellow-100 hover:bg-yellow-200 text-yellow-800 rounded">Link</button>`
+    : "";
+  return `
+    <article class="p-3 border border-gray-200 rounded-lg bg-white">
+      <div class="flex items-start justify-between gap-3">
+        <div class="min-w-0">
+          <div class="text-sm font-medium text-gray-800">${escapeHtml(title)}</div>
+          <div class="text-xs text-gray-500 mt-1">${escapeHtml(meta)}</div>
+        </div>
+        ${linkButton}
+      </div>
+      ${text ? `<p class="text-xs text-gray-600 leading-relaxed mt-2">${escapeHtml(text)}${text.length === 260 ? "..." : ""}</p>` : ""}
+    </article>`;
+}
+
+function syncLinkButtons() {
+  document.querySelectorAll(".link-paper").forEach(button => {
+    const isLinked = linkedPaperIds.has(button.dataset.paperId);
+    button.disabled = isLinked;
+    button.textContent = isLinked ? "Linked" : "Link";
+  });
+}
+
+async function doRagSearch(queryOverride = "") {
+  const input = document.getElementById("search-query");
+  const resultsNode = document.getElementById("rag-results");
+  const query = (queryOverride || input.value).trim();
+  if (!query) {
+    resultsNode.innerHTML = '<div class="text-sm text-amber-700 p-3 bg-amber-50 rounded-lg">Enter a search query first.</div>';
+    input.focus();
     return;
   }
-  container.innerHTML = results.map(r => `
-    <div class="p-3 border border-gray-200 rounded-lg">
-      <div class="text-sm font-medium text-gray-800">${esc(r.title || r.paper_id)}</div>
-      <div class="text-xs text-gray-500 mb-1">${esc(r.section_name || '')} · ${esc(r.authors || '')} ${r.year ? '(' + esc(r.year) + ')' : ''}</div>
-      <div class="text-xs text-gray-600">${esc((r.text || '').slice(0, 220))}…</div>
-      ${withLink && LAB_MS_ID ? `<button onclick="createLink('${esc(r.paper_id)}')"
-        class="mt-2 px-2 py-1 text-xs bg-yellow-100 hover:bg-yellow-200 text-yellow-700 rounded">+ Link to manuscript</button>` : ''}
-    </div>`).join('');
-}
 
-async function doRagSearch() {
-  const q = document.getElementById('search-query').value.trim();
-  const box = document.getElementById('rag-results');
-  if (!q) return;
-  box.innerHTML = '<div class="text-sm text-gray-400 italic p-4">Searching…</div>';
+  input.value = query;
+  resultsNode.innerHTML = '<div class="text-sm text-gray-500 p-4">Searching your paper collection...</div>';
   try {
-    const r = await fetch('/api/rag/search', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({query: q, top_k: 8}),
+    const response = await fetch("/api/rag/search", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({query, top_k: 10}),
     });
-    if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
-    renderResults(box, (await r.json()).results || [], true);
-  } catch (e) {
-    box.innerHTML = `<div class="text-sm text-red-500 p-4">Search failed: ${esc(e.message)}</div>`;
-  }
-}
-
-async function createLink(paperId) {
-  if (!LAB_MS_ID) return;
-  const form = new FormData();
-  form.append('ms_id', LAB_MS_ID);
-  form.append('paper_id', paperId);
-  try {
-    const r = await fetch('/api/rag/links', {method: 'POST', body: form});
-    if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
-    await loadLinkedPapers();
-  } catch (e) {
-    alert('Link failed: ' + e.message);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || "Search failed");
+    resultsNode.innerHTML = data.results?.length
+      ? data.results.map(resultCard).join("")
+      : '<div class="text-sm text-gray-500 p-4">No matching papers found.</div>';
+    syncLinkButtons();
+  } catch (error) {
+    resultsNode.innerHTML = `<div class="text-sm text-red-700 p-3 bg-red-50 rounded-lg">${escapeHtml(error.message)}</div>`;
   }
 }
 
 async function loadLinkedPapers() {
-  if (!LAB_MS_ID) return;
-  const box = document.getElementById('linked-papers');
+  if (!selectedManuscriptId) return;
+  const node = document.getElementById("linked-papers");
   try {
-    const r = await fetch('/api/rag/links/' + encodeURIComponent(LAB_MS_ID));
-    const data = await r.json();
-    const links = data.links || [];
-    if (!links.length) {
-      box.innerHTML = '<div class="text-sm text-gray-400 italic p-4">No linked papers yet — use "+ Link Paper".</div>';
-      return;
-    }
-    box.innerHTML = links.map(l => `
-      <div class="flex justify-between items-center p-3 border border-gray-200 rounded-lg mb-2">
-        <div>
-          <div class="text-sm font-medium text-gray-800">${esc(l.title || l.rag_paper_id || l.paper_id)}</div>
-          <div class="text-xs text-gray-500">${esc(l.link_type || 'related')}${l.note ? ' · ' + esc(l.note) : ''}</div>
-        </div>
-        <button onclick="removeLink(${Number(l.id)})" class="text-gray-400 hover:text-red-500 text-lg">&times;</button>
-      </div>`).join('');
-  } catch (e) {
-    box.innerHTML = `<div class="text-sm text-red-500 p-4">Failed to load links: ${esc(e.message)}</div>`;
+    const response = await fetch(`/api/rag/links/${encodeURIComponent(selectedManuscriptId)}`);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || "Could not load links");
+    linkedPaperIds = new Set((data.links || []).map(link => link.rag_paper_id));
+    node.innerHTML = data.links?.length
+      ? data.links.map(link => `
+          <article class="flex items-start justify-between gap-4 py-3 border-b border-gray-100 last:border-0">
+            <div class="min-w-0">
+              <div class="text-sm font-medium text-gray-800">${escapeHtml(link.title)}</div>
+              <div class="text-xs text-gray-500 mt-1">${escapeHtml([link.authors, link.year, link.link_type].filter(Boolean).join(" · "))}</div>
+              ${link.note ? `<div class="text-xs text-gray-600 mt-1">${escapeHtml(link.note)}</div>` : ""}
+            </div>
+            <button type="button" data-link-id="${escapeHtml(link.id)}" class="delete-link text-xs text-red-600 hover:text-red-800">Remove</button>
+          </article>`).join("")
+      : '<div class="text-sm text-gray-400 italic p-4">No papers linked yet. Search the library and choose Link.</div>';
+    syncLinkButtons();
+  } catch (error) {
+    node.innerHTML = `<div class="text-sm text-red-700 p-3 bg-red-50 rounded-lg">${escapeHtml(error.message)}</div>`;
   }
 }
 
-async function removeLink(linkId) {
+async function addPaperLink(paperId) {
+  const body = new URLSearchParams({
+    ms_id: selectedManuscriptId,
+    paper_id: paperId,
+    link_type: "related",
+    note: "Linked from Research Lab search",
+  });
+  const response = await fetch("/api/rag/links", {method: "POST", body});
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.detail || "Could not link paper");
+  await loadLinkedPapers();
+}
+
+function linkPaper() {
+  const input = document.getElementById("search-query");
+  input.focus();
+  input.scrollIntoView({behavior: "smooth", block: "center"});
+}
+
+function searchForRelated() {
+  if (!selectedManuscript) return;
+  const query = [selectedManuscript.title, selectedManuscript.principal_claim]
+    .filter(Boolean).join(" ").slice(0, 500);
+  doRagSearch(query);
+}
+
+document.getElementById("rag-results").addEventListener("click", async event => {
+  const button = event.target.closest(".link-paper");
+  if (!button) return;
+  button.disabled = true;
+  button.textContent = "Linking...";
   try {
-    const r = await fetch('/api/rag/links/' + linkId, {method: 'DELETE'});
-    if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
+    await addPaperLink(button.dataset.paperId);
+    button.textContent = "Linked";
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = "Retry";
+    alert(error.message);
+  }
+});
+
+document.getElementById("linked-papers")?.addEventListener("click", async event => {
+  const button = event.target.closest(".delete-link");
+  if (!button) return;
+  button.disabled = true;
+  try {
+    const response = await fetch(`/api/rag/links/${encodeURIComponent(button.dataset.linkId)}`, {method: "DELETE"});
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || "Could not remove link");
     await loadLinkedPapers();
-  } catch (e) {
-    alert('Unlink failed: ' + e.message);
+  } catch (error) {
+    button.disabled = false;
+    alert(error.message);
   }
-}
+});
 
-function linkPaper(msId) {
-  // Focus the search box — linking happens from a search result.
-  const inp = document.getElementById('search-query');
-  inp.focus();
-  inp.placeholder = 'Search papers, then click "+ Link to manuscript"…';
-}
-
-async function searchForRelated(msId) {
-  // Seed the literature search with the manuscript title.
-  const inp = document.getElementById('search-query');
-  inp.value = LAB_MS_TITLE || msId;
-  await doRagSearch();
-}
-
-function closeRagModal() {
-  document.getElementById('rag-modal').classList.add('hidden');
-}
-
-if (LAB_MS_ID) loadLinkedPapers();
+loadLinkedPapers();
 </script>
 {% endblock %}
