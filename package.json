@@ -1,0 +1,10 @@
+{
+  "name": "labui-assets",
+  "private": true,
+  "scripts": {
+    "build:css": "tailwindcss -c tailwind.config.cjs -i submission_strategy/jfr/web/tailwind.css -o submission_strategy/jfr/web/static/app.css --minify"
+  },
+  "devDependencies": {
+    "tailwindcss": "3.4.17"
+  }
+}

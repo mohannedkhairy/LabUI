@@ -123,6 +123,17 @@ def ingest_articles(
     now = datetime.now(timezone.utc).isoformat()
     inserted = 0
     for a in articles:
+        if not a.get("doi"):
+            # UNIQUE(doi) treats NULLs as distinct, so INSERT OR IGNORE never
+            # suppresses repeats of DOI-less articles (common in RSS entries) —
+            # they'd be re-inserted and re-embedded on every refresh. Dedupe
+            # them by journal + title instead.
+            dupe = conn.execute(
+                "SELECT 1 FROM corpus_article WHERE journal_id=? AND doi IS NULL AND title=?",
+                (journal_id, a.get("title", "")),
+            ).fetchone()
+            if dupe:
+                continue
         try:
             conn.execute(
                 """INSERT OR IGNORE INTO corpus_article
