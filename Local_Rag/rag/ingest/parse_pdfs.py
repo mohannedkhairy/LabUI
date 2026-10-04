@@ -22,7 +22,8 @@ except ImportError:
     sys.exit(1)
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from config import PAPERS_PDF_DIR, PAPERS_LIBRARY, PARSED_DIR
+from config import PAPERS_PDF_DIR, PAPERS_LIBRARY, PARSED_DIR, MENDELEY_LIBRARY
+from ingest.metadata import load_sources, match as match_metadata
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logging.getLogger("RapidOCR").setLevel(logging.ERROR)
@@ -269,7 +270,8 @@ def _convert(converter: DocumentConverter, pdf_path: Path):
         return None
 
 
-def parse_pdf(pdf_path: Path, library: dict, converter: DocumentConverter) -> dict | None:
+def parse_pdf(pdf_path: Path, library: dict, converter: DocumentConverter,
+              metadata_records: list[dict] | None = None) -> dict | None:
     paper_id = _slug(pdf_path)
     stem = pdf_path.stem
 
@@ -306,7 +308,7 @@ def parse_pdf(pdf_path: Path, library: dict, converter: DocumentConverter) -> di
     else:
         title = stem
 
-    # --- Authors / year from library when available ---
+    # --- Authors / year from the local library when available ---
     authors = lib_entry.get("authors", [])
     if isinstance(authors, str):
         authors = [a.strip() for a in authors.split(";") if a.strip()]
@@ -317,11 +319,28 @@ def parse_pdf(pdf_path: Path, library: dict, converter: DocumentConverter) -> di
     else:
         year = None
 
+    # Mendeley (or another configured reference export) is an input source for
+    # enrichment. Prefer an exact/file or high-confidence title match and only
+    # fill fields that the PDF/library parser did not already provide.
+    external = match_metadata(pdf_path, title, metadata_records or [])
+    if external:
+        if not authors and external.get("authors"):
+            authors = [a.strip() for a in str(external["authors"]).split(";") if a.strip()]
+        if not year and external.get("year"):
+            year = external["year"]
+
     return {
         "paper_id": paper_id,
         "title": title,
         "authors": authors,
         "year": year,
+        "doi": (external or {}).get("doi") or lib_entry.get("doi"),
+        "journal": (external or {}).get("journal") or lib_entry.get("journal"),
+        "volume": (external or {}).get("volume") or lib_entry.get("volume"),
+        "issue": (external or {}).get("issue") or lib_entry.get("issue") or lib_entry.get("number"),
+        "pages": (external or {}).get("pages") or lib_entry.get("pages") or lib_entry.get("page"),
+        "publisher": (external or {}).get("publisher") or lib_entry.get("publisher"),
+        "url": (external or {}).get("url") or lib_entry.get("url"),
         "source_pdf": str(pdf_path),
         "sections": body_sections,
         "references_raw": refs_raw,
@@ -331,6 +350,11 @@ def parse_pdf(pdf_path: Path, library: dict, converter: DocumentConverter) -> di
 def run(limit: int | None = None, force: bool = False) -> None:
     PARSED_DIR.mkdir(parents=True, exist_ok=True)
     library = _load_library()
+    # Read the configured Mendeley/reference library once per indexing run;
+    # the source is never written to. A missing default file is harmless.
+    metadata_records = load_sources([MENDELEY_LIBRARY])
+    if metadata_records:
+        log.info("Loaded %d metadata records from %s", len(metadata_records), MENDELEY_LIBRARY)
     converter = DocumentConverter()
 
     # Case-insensitive match (.pdf/.PDF) — glob('*.pdf') would miss `Foo.PDF`.
@@ -348,7 +372,7 @@ def run(limit: int | None = None, force: bool = False) -> None:
             ok += 1
             continue
 
-        result = parse_pdf(pdf_path, library, converter)
+        result = parse_pdf(pdf_path, library, converter, metadata_records)
         if result is None:
             skipped.append(pdf_path.name)
             continue

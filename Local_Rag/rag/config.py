@@ -22,6 +22,10 @@ LOCAL_RAG_ROOT   = RAG_ROOT.parent
 PAPERS_PDF_DIR   = _env_path("RAG_PAPERS_DIR", LOCAL_RAG_ROOT / "papers")
 SUMMARIES_DIR    = LOCAL_RAG_ROOT / "output" / "individual"
 PAPERS_LIBRARY   = LOCAL_RAG_ROOT / "output" / "papers_library.json"
+# Optional personal reference library used during PDF indexing.  This is an
+# input-only path: BibTeX/RIS/CSL-JSON exports and common Mendeley SQLite
+# databases are read without modifying the source file.
+MENDELEY_LIBRARY = _env_path("RAG_MENDELEY_LIBRARY", RAG_ROOT / "data" / "mendeley.bib")
 
 # ── Data outputs ─────────────────────────────────────────────────────────────
 DATA_DIR         = _env_path("RAG_DATA_DIR", RAG_ROOT / "data")
@@ -62,6 +66,8 @@ OLLAMA_BASE_URL  = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 PORT             = int(os.environ.get("RAG_PORT", "5002"))
 STATIC_DIR       = RAG_ROOT / "static"
 NOTES_DIR        = _env_path("RAG_NOTES_DIR", RAG_ROOT / "notes")  # saved answer notes (.md)
+MANUSCRIPTS_DIR  = _env_path("RAG_MANUSCRIPTS_DIR", RAG_ROOT / "manuscripts")  # writing projects (multi-file manuscripts)
+MANUSCRIPTS_DB_PATH = DATA_DIR / "manuscripts.db"  # project/file registry (sibling of memory.db)
 STYLE_DIR        = DATA_DIR / "style"        # user's writing-style samples (.md/.txt)
 STYLE_MAX_CHARS  = int(os.environ.get("RAG_STYLE_MAX_CHARS", "12000"))
 

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}LabUI{% endblock %} — LabUI</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><rect width='24' height='24' rx='5.5' fill='%235e6bf0'/><path d='M12 5L5 12M12 5L19 11M5 12L11 19M19 11L11 19M5 12L19 11' stroke='%23fff' stroke-width='1.4' fill='none'/><g fill='%23fff'><circle cx='12' cy='5' r='2'/><circle cx='5' cy='12' r='2'/><circle cx='19' cy='11' r='2'/><circle cx='11' cy='19' r='2'/></g></svg>">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><rect width='24' height='24' rx='6' fill='%23171512'/><circle cx='9' cy='14' r='4.5' fill='none' stroke='%23DE4B2C' stroke-width='1.6'/><circle cx='16' cy='8.5' r='2.6' fill='none' stroke='%230E7C6E' stroke-width='1.5'/><circle cx='17.5' cy='15.5' r='1.4' fill='%23DE4B2C'/></svg>">
 
   <!-- Pre-paint theme: read storage / system preference and set `class="dark"` early so we don't flash. -->
   <script>
@@ -20,7 +20,8 @@
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <!-- Fraunces (display serif, variable optical size) · Public Sans (UI) · JetBrains Mono (data) -->
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Public+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 
   <!-- KaTeX math rendering (styles; JS loaded near </body>) -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
@@ -32,28 +33,50 @@
       theme: {
         extend: {
           fontFamily: {
-            sans: ['Inter', 'system-ui', 'sans-serif'],
-            mono: ['"IBM Plex Mono"', 'ui-monospace', 'monospace'],
+            sans:    ['"Public Sans"', 'system-ui', 'sans-serif'],
+            display: ['Fraunces', 'Georgia', 'serif'],
+            mono:    ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
           },
           colors: {
+            // Warm neutral ramp. Light→dark, so `bg-ink-50` / `dark:bg-ink-900`
+            // in existing templates keep meaning what they meant.
             ink: {
-              50:  '#f7f8fa',  100: '#eef0f4',
-              200: '#dde1e8',  300: '#bfc6d2',
-              400: '#8b94a6',  500: '#5a6478',
-              600: '#3e4759',  700: '#2a3142',
-              800: '#1c2230',  900: '#12161f',
-              950: '#0a0d14',
+              50:  '#faf7f1',  100: '#f1ebe1',
+              200: '#e3dacb',  300: '#c8bca8',
+              400: '#9a9184',  500: '#6e675d',
+              600: '#4e4941',  700: '#3a352e',
+              800: '#262320',  900: '#1a1815',
+              950: '#100f0d',
             },
+            // Signal vermillion — the one loud colour, used sparingly.
             brand: {
-              50:  '#eef1ff',  100: '#e0e5ff',  200: '#c7d0ff',
-              300: '#a3b1ff',  400: '#7c8aff',  500: '#5e6bf0',
-              600: '#4e58d8',  700: '#3f47b3',  800: '#353c8f',
-              900: '#2e3573',  950: '#1d2050',
+              50:  '#fdf0ec',  100: '#fbddd4',  200: '#f7bcab',
+              300: '#f1937a',  400: '#e96a48',  500: '#de4b2c',
+              600: '#c33a1e',  700: '#9e2d17',  800: '#7a2413',
+              900: '#5c1c10',  950: '#35100a',
+            },
+            // Data teal — measurements, positive states, secondary emphasis.
+            data: {
+              50:  '#e6f5f2',  100: '#c3e8e2',  200: '#8fd4c9',
+              300: '#55bcae',  400: '#26a094',  500: '#0e7c6e',
+              600: '#0a6459',  700: '#095047',  800: '#0a3f39',
+              900: '#08322e',  950: '#041e1b',
+            },
+            // Live chartreuse — streaming / running / "happening now".
+            live: {
+              50:  '#f7fae4',  100: '#edf3c3',  200: '#dde78d',
+              300: '#c8d84f',  400: '#b0c42c',  500: '#8fa31e',
+              600: '#6f8017',  700: '#556214',  800: '#434d15',
+              900: '#394115',  950: '#1d2306',
             },
           },
           boxShadow: {
-            soft: '0 1px 2px rgb(0 0 0 / 0.04), 0 1px 8px rgb(0 0 0 / 0.04)',
-            'soft-dark': '0 1px 2px rgb(0 0 0 / 0.3), 0 1px 12px rgb(0 0 0 / 0.4)',
+            soft:        '0 1px 0 rgba(23,21,18,0.04), 0 1px 2px rgba(23,21,18,0.04)',
+            'soft-dark': '0 1px 0 rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.3)',
+            lift:        '0 2px 4px rgba(23,21,18,0.05), 0 12px 28px -14px rgba(23,21,18,0.22)',
+          },
+          transitionTimingFunction: {
+            spring: 'cubic-bezier(0.22, 1, 0.36, 1)',
           },
         },
       },
@@ -64,219 +87,454 @@
   <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
 
   <style>
-    html, body { height: 100%; }
-    body { font-family: 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
-    [x-cloak] { display: none !important; }
-    .htmx-indicator { display: none; }
-    .htmx-request .htmx-indicator { display: flex; }
-    .htmx-request.htmx-indicator { display: flex; }
-    .score-bar { transition: width 0.6s ease; }
-    .state-badge { font-size: 0.7rem; letter-spacing: 0.05em; }
+  /* ══════════════════════════════════════════════════════════════════════
+     BENCH — a lab-instrument design language for LabUI.
 
-    /* Custom scrollbars for the chat / sidebar */
-    .scroll-thin::-webkit-scrollbar { width: 10px; height: 10px; }
-    .scroll-thin::-webkit-scrollbar-track { background: transparent; }
-    .scroll-thin::-webkit-scrollbar-thumb { background: rgba(120,130,150,0.25); border-radius: 6px; }
-    .scroll-thin::-webkit-scrollbar-thumb:hover { background: rgba(120,130,150,0.45); }
+     Warm paper and ink, hairline rules instead of ambient shadows, one signal
+     colour (vermillion) with teal for data and chartreuse for anything live.
+     Display serif for headings and numbers; a grotesque for UI; mono for
+     anything you would read off an instrument.
 
-    /* Status dot */
-    .status-dot {
-      display: inline-block; width: 8px; height: 8px; border-radius: 50%;
-      background: #94a3b8; box-shadow: 0 0 0 0 rgba(34,197,94,0); transition: background-color 0.3s ease;
-    }
-    .status-dot.ok   { background: #22c55e; }
-    .status-dot.warn { background: #f59e0b; }
-    .status-dot.err  { background: #ef4444; }
-    .status-dot.pulse { animation: pulse 1.6s ease-in-out infinite; }
-    @keyframes pulse {
-      0%,100% { box-shadow: 0 0 0 0 rgba(34,197,94,0.55); }
-      50%     { box-shadow: 0 0 0 6px rgba(34,197,94,0);   }
-    }
+     Everything downstream keys off the tokens and component classes below —
+     .tile, .chip, .nav-link, .toolbar-btn, .stat-num and friends — so pages
+     restyle without being touched.
+     ══════════════════════════════════════════════════════════════════════ */
 
-    /* Markdown body inside chat */
-    .md-body p { margin: 0.5em 0; }
-    .md-body code { font-family: 'IBM Plex Mono', monospace; font-size: 0.85em;
-                    padding: 1px 5px; border-radius: 4px; background: rgba(120,130,150,0.15); }
-    .md-body pre { background: rgba(120,130,150,0.10); padding: 12px; border-radius: 8px;
-                   overflow-x: auto; margin: 0.6em 0; font-size: 0.85em; }
-    .md-body pre code { background: transparent; padding: 0; }
-    .md-body a { color: #5e6bf0; text-decoration: underline; }
-    .dark .md-body a { color: #a3b1ff; }
-    .md-body ul, .md-body ol { padding-left: 1.25em; margin: 0.5em 0; }
-    .md-body h2 { font-size: 1.05rem; font-weight: 600; margin-top: 1em; }
-    .md-body h3 { font-size: 0.95rem; font-weight: 600; margin-top: 0.8em; }
-    .md-body blockquote { border-left: 3px solid #c7d0ff; padding-left: 10px; color: #5a6478; margin: 0.5em 0; }
-    .dark .md-body blockquote { border-color: #353c8f; color: #bfc6d2; }
+  :root {
+    --ground:     #efeae1;   /* behind the shell */
+    --surface:    #fbf8f3;   /* the shell itself  */
+    --raised:     #ffffff;   /* tiles             */
+    --sunken:     #f4efe6;   /* wells, inputs     */
+    --stock:      #f4e7cd;   /* manila — the focal card */
+    --stock-line: #ddcaa4;
+    --ink:        #171512;
+    --ink-muted:  #6e675d;
+    --ink-faint:  #9a9184;
+    --line:       #e6dece;
+    --line-firm:  #d3c8b6;
+    --signal:     #de4b2c;
+    --signal-ink: #9e2d17;
+    --signal-wash:#fdf0ec;
+    --data:       #0e7c6e;
+    --data-wash:  #e6f5f2;
+    --live:       #8fa31e;
+    --live-wash:  #f7fae4;
+    --warn:       #b8791b;
+    --danger:     #c0392b;
+    --grid:       rgba(23,21,18,0.055);
+    --radius:     10px;
+    --radius-sm:  6px;
+  }
+  .dark {
+    --ground:     #0c0b0a;
+    --surface:    #141210;
+    --raised:     #1c1a16;
+    --sunken:     #171512;
+    --stock:      #241f17;   /* kraft — the focal card */
+    --stock-line: #453b28;
+    --ink:        #f2ece2;
+    --ink-muted:  #a79e90;
+    --ink-faint:  #7a7266;
+    --line:       #2b2721;
+    --line-firm:  #3c362d;
+    --signal:     #ff6a45;
+    --signal-ink: #ff8f73;
+    --signal-wash:#2a1611;
+    --data:       #2fbfac;
+    --data-wash:  #0c2723;
+    --live:       #c6db3a;
+    --live-wash:  #232709;
+    --warn:       #e3a53d;
+    --danger:     #e8695c;
+    --grid:       rgba(242,236,226,0.05);
+  }
 
-    .cite-chip {
-      display: inline-flex; align-items: center; gap: 4px;
-      background: #eef1ff; color: #3f47b3; font-family: 'IBM Plex Mono', monospace;
-      font-size: 11px; padding: 1px 6px; border-radius: 4px; margin: 0 1px; cursor: pointer;
-      vertical-align: baseline; line-height: 1.3;
-    }
-    .cite-chip:hover { background: #c7d0ff; }
-    .dark .cite-chip { background: #1d2050; color: #a3b1ff; }
-    .dark .cite-chip:hover { background: #2e3573; }
+  html, body { height: 100%; }
+  body {
+    font-family: 'Public Sans', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    background-color: var(--ground);
+    color: var(--ink);
+    font-feature-settings: 'ss01', 'cv05';
+  }
+  [x-cloak] { display: none !important; }
+  .htmx-indicator { display: none; }
+  .htmx-request .htmx-indicator { display: flex; }
+  .htmx-request.htmx-indicator { display: flex; }
+  ::selection { background: var(--signal); color: #fff; }
 
-    .spinner {
-      width: 14px; height: 14px; border: 2px solid rgba(120,130,150,0.3);
-      border-top-color: #5e6bf0; border-radius: 50%;
-      animation: spin 0.7s linear infinite; display: inline-block;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
+  /* ── Type ───────────────────────────────────────────────────────────── */
+  .font-display, h1, h2.display { font-family: 'Fraunces', Georgia, serif; }
+  h1 { font-variation-settings: 'SOFT' 0, 'WONK' 1, 'opsz' 90; letter-spacing: -0.015em; }
 
-    /* ── Aurora Light — tile primitives (Active Orders flavor) ── */
-    .tile {
-      background: #ffffff;
-      border-radius: 24px;
-      box-shadow: 0 1px 2px rgba(15, 19, 36, 0.03), 0 16px 48px -20px rgba(15, 19, 36, 0.10);
-      padding: 24px 26px;
-    }
-    .dark .tile {
-      background: #1c2230;
-      box-shadow: 0 1px 2px rgba(0,0,0,0.4), 0 16px 48px -20px rgba(0,0,0,0.6);
-    }
-    .tile-flush  { padding: 0; }
-    .tile-tight  { padding: 14px 18px; }
+  /* Instrument labelling: small, mono, spaced, quiet. Used for every
+     "LABEL above a value" in the app. */
+  .stat-label, .eyebrow {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 10px; font-weight: 500; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--ink-faint);
+  }
+  .dark .stat-label, .dark .eyebrow { color: var(--ink-faint); }
 
-    /* Inverted hero — Aurora Light replaces the dark gradient with a
-       lavender-tinted card + indigo text. Same focal hierarchy, lighter mood. */
-    .tile-inverted {
-      background: linear-gradient(135deg, #eef1ff 0%, #e0e5ff 100%);
-      color: #2e3573;
-      border-radius: 24px;
-      padding: 24px 26px;
-      box-shadow: 0 1px 2px rgba(15, 19, 36, 0.03), 0 16px 48px -20px rgba(94, 107, 240, 0.25);
-      position: relative; overflow: hidden;
-    }
-    .tile-inverted::after {
-      content: ""; position: absolute; right: -60px; top: -60px;
-      width: 220px; height: 220px; border-radius: 50%;
-      background: radial-gradient(circle, rgba(94,107,240,0.18), transparent 70%);
-      pointer-events: none;
-    }
-    .dark .tile-inverted {
-      background: linear-gradient(135deg, #1d2050 0%, #353c8f 100%);
-      color: #eef1ff;
-      box-shadow: 0 16px 48px -20px rgba(124, 138, 255, 0.45);
-    }
+  .stat-num, .stat-num-sm {
+    font-family: 'Fraunces', Georgia, serif;
+    font-variation-settings: 'SOFT' 0, 'WONK' 0, 'opsz' 120;
+    font-weight: 600; line-height: 0.95; letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums; color: var(--ink);
+  }
+  .stat-num    { font-size: 42px; }
+  .stat-num-sm { font-size: 28px; }
 
-    .stat-label   { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #8b94a6; }
-    .dark .stat-label { color: #5a6478; }
-    .stat-num     { font-size: 38px; line-height: 1; font-weight: 700; letter-spacing: -0.02em; }
-    .stat-num-sm  { font-size: 28px; line-height: 1; font-weight: 700; letter-spacing: -0.02em; }
+  .state-badge { font-size: 0.68rem; letter-spacing: 0.08em; text-transform: uppercase;
+                 font-family: 'JetBrains Mono', monospace; }
 
-    .chip {
-      display: inline-flex; align-items: center; gap: 4px;
-      font-size: 11px; font-weight: 600;
-      padding: 3px 10px; border-radius: 999px;
-      background: #eef0f4; color: #5a6478;
+  /* ── Ground: faint engineering grid, so surfaces read as paper on a bench ── */
+  /* ── Shell ──────────────────────────────────────────────────────────── */
+  .app-shell {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    box-shadow: 0 1px 0 rgba(23,21,18,0.03), 0 24px 60px -34px rgba(23,21,18,0.35);
+    overflow: hidden;
+  }
+  .dark .app-shell { box-shadow: 0 1px 0 rgba(0,0,0,0.5), 0 24px 60px -34px rgba(0,0,0,0.9); }
+
+  /* Working surface: faint graph paper so tiles read as sheets on a bench. */
+  .app-main {
+    background-color: var(--surface);
+    background-image:
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 26px 26px;
+  }
+
+  /* ── Tiles: hairline, flat, precise. No ambient glow. ───────────────── */
+  .tile {
+    background: var(--raised);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 20px 22px;
+    transition: border-color .18s ease, transform .18s cubic-bezier(.22,1,.36,1);
+  }
+  .tile-flush  { padding: 0; }
+  .tile-tight  { padding: 13px 16px; }
+  .tile-hover:hover { border-color: var(--line-firm); transform: translateY(-2px); }
+
+  /* Focal card — a different paper stock, not an inverted slab. Manila index
+     card with a signal rule along the top edge: it reads as "the card that
+     matters" while staying inside the same paper-and-ink world as everything
+     else. Inverting it worked in dark mode and broke the concept in light. */
+  .tile-inverted {
+    background: var(--stock);
+    color: var(--ink);
+    border: 1px solid var(--stock-line);
+    border-radius: var(--radius);
+    padding: 22px 22px 20px;
+    position: relative; overflow: hidden;
+  }
+  .tile-inverted::before {
+    content: ""; position: absolute; left: -1px; right: -1px; top: -1px; height: 3px;
+    background: var(--signal);
+  }
+  /* A cluster of bubbles at rest in the corner. Thin outlines drawn with
+     radial-gradients — box-shadow spread would give filled discs. */
+  .tile-inverted::after {
+    content: ""; position: absolute; right: -30px; bottom: -34px;
+    width: 230px; height: 190px; pointer-events: none; opacity: .8;
+    background:
+      radial-gradient(circle 62px at 78% 74%, transparent 60px,
+        color-mix(in srgb, var(--signal) 34%, transparent) 60px,
+        color-mix(in srgb, var(--signal) 34%, transparent) 61.2px, transparent 61.5px),
+      radial-gradient(circle 34px at 40% 52%, transparent 32px,
+        color-mix(in srgb, var(--signal) 24%, transparent) 32px,
+        color-mix(in srgb, var(--signal) 24%, transparent) 33.2px, transparent 33.5px),
+      radial-gradient(circle 17px at 62% 22%, transparent 15px,
+        color-mix(in srgb, var(--data) 48%, transparent) 15px,
+        color-mix(in srgb, var(--data) 48%, transparent) 16.2px, transparent 16.5px);
+    background-repeat: no-repeat;
+  }
+  .tile-inverted > * { position: relative; z-index: 1; }
+
+  /* ── Chips: squared instrument tags ─────────────────────────────────── */
+  .chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10.5px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase;
+    padding: 3px 8px; border-radius: var(--radius-sm);
+    background: var(--sunken); color: var(--ink-muted);
+    border: 1px solid var(--line);
+  }
+  .chip-brand   { background: var(--signal-wash); color: var(--signal-ink); border-color: color-mix(in srgb, var(--signal) 28%, transparent); }
+  .chip-success { background: var(--data-wash);   color: var(--data);       border-color: color-mix(in srgb, var(--data) 28%, transparent); }
+  .chip-warn    { background: color-mix(in srgb, var(--warn) 12%, transparent); color: var(--warn); border-color: color-mix(in srgb, var(--warn) 30%, transparent); }
+  .chip-danger  { background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger); border-color: color-mix(in srgb, var(--danger) 30%, transparent); }
+  .chip-live    { background: var(--live-wash);   color: var(--live);       border-color: color-mix(in srgb, var(--live) 34%, transparent); }
+  .type-chip    { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; }
+
+  /* ── Buttons ────────────────────────────────────────────────────────── */
+  .toolbar-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; font-weight: 500;
+    padding: 5px 10px; border-radius: var(--radius-sm);
+    border: 1px solid var(--line); background: var(--raised); color: var(--ink-muted);
+    transition: border-color .15s ease, color .15s ease, background-color .15s ease;
+    white-space: nowrap;
+  }
+  .toolbar-btn:hover:not(:disabled) { border-color: var(--signal); color: var(--signal); }
+  .toolbar-btn:disabled { opacity: .45; cursor: not-allowed; }
+  .btn-signal {
+    background: var(--signal); border-color: var(--signal); color: #fff; font-weight: 600;
+  }
+  .btn-signal:hover:not(:disabled) { background: var(--signal-ink); border-color: var(--signal-ink); color: #fff; }
+
+  /* ── Nav: a rail, not a stack of cards ──────────────────────────────── */
+  .nav-link {
+    position: relative;
+    display: flex; align-items: center; gap: 11px;
+    padding: 7px 12px 7px 16px;
+    border-radius: var(--radius-sm);
+    font-size: 13px; font-weight: 500;
+    color: var(--ink-muted);
+    transition: color .15s ease, background-color .15s ease;
+  }
+  .nav-link svg { opacity: .62; transition: opacity .15s ease, color .15s ease; }
+  .nav-link:hover { background: var(--sunken); color: var(--ink); }
+  .nav-link:hover svg { opacity: 1; }
+  .nav-link.active { color: var(--ink); font-weight: 600; background: transparent; }
+  .nav-link.active svg { color: var(--signal); opacity: 1; }
+  /* The bubble. Sits on the rail beside the active item and — because it
+     carries a view-transition-name — physically travels there when you
+     navigate, instead of blinking out and back in. */
+  .nav-link.active::before {
+    content: ''; position: absolute; left: 1px; top: 50%;
+    width: 7px; height: 7px; margin-top: -3.5px;
+    border-radius: 50%; background: var(--signal);
+    view-transition-name: nav-bubble;
+    animation: bubble-rise .5s cubic-bezier(.22,1,.36,1) both;
+  }
+  @keyframes bubble-rise {
+    from { transform: translateY(9px) scale(.4); opacity: 0; }
+    to   { transform: translateY(0)    scale(1); opacity: 1; }
+  }
+  .nav-section {
+    font-family: 'JetBrains Mono', monospace; font-size: 9.5px; font-weight: 500;
+    letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-faint);
+  }
+
+  /* ── Inputs ─────────────────────────────────────────────────────────── */
+  input:not([type=checkbox]):not([type=radio]), textarea, select {
+    font-family: inherit;
+  }
+  .field {
+    background: var(--sunken); border: 1px solid var(--line); border-radius: var(--radius-sm);
+    color: var(--ink); padding: 7px 10px; font-size: 13px; width: 100%;
+    transition: border-color .15s ease;
+  }
+  .field:focus { outline: none; border-color: var(--signal); }
+
+  /* ── Scrollbars ─────────────────────────────────────────────────────── */
+  .scroll-thin::-webkit-scrollbar { width: 9px; height: 9px; }
+  .scroll-thin::-webkit-scrollbar-track { background: transparent; }
+  .scroll-thin::-webkit-scrollbar-thumb { background: var(--line-firm); border-radius: 6px;
+                                          border: 2px solid transparent; background-clip: content-box; }
+  .scroll-thin::-webkit-scrollbar-thumb:hover { background: var(--ink-faint); background-clip: content-box; }
+
+  /* ── Status dot ─────────────────────────────────────────────────────── */
+  .status-dot {
+    display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+    background: var(--line-firm); transition: background-color .3s ease;
+  }
+  .status-dot.ok   { background: var(--data); }
+  .status-dot.warn { background: var(--warn); }
+  .status-dot.err  { background: var(--danger); }
+  .status-dot.pulse { animation: dot-pulse 1.8s ease-in-out infinite; }
+  @keyframes dot-pulse {
+    0%,100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--data) 55%, transparent); }
+    50%     { box-shadow: 0 0 0 5px transparent; }
+  }
+
+  /* ── Spinner → a rising bubble ──────────────────────────────────────── */
+  .spinner {
+    width: 14px; height: 14px; display: inline-block; position: relative;
+  }
+  .spinner::before, .spinner::after {
+    content: ''; position: absolute; left: 50%; bottom: 0;
+    width: 6px; height: 6px; margin-left: -3px; border-radius: 50%;
+    border: 1.5px solid var(--signal);
+    animation: bubble-up 1.15s cubic-bezier(.4,0,.5,1) infinite;
+  }
+  .spinner::after { animation-delay: .55s; }
+  @keyframes bubble-up {
+    0%   { transform: translateY(0) scale(.45); opacity: 0; }
+    25%  { opacity: 1; }
+    100% { transform: translateY(-13px) scale(1.05); opacity: 0; }
+  }
+
+  .score-bar { transition: width .6s cubic-bezier(.22,1,.36,1); }
+  .sparkline { height: 30px; display: block; }
+
+  /* ── Markdown ───────────────────────────────────────────────────────── */
+  .md-body { line-height: 1.68; }
+  .md-body p { margin: 0.55em 0; }
+  .md-body code { font-family: 'JetBrains Mono', monospace; font-size: 0.84em;
+                  padding: 1px 5px; border-radius: 4px; background: var(--sunken);
+                  border: 1px solid var(--line); }
+  .md-body pre { background: var(--sunken); border: 1px solid var(--line); padding: 12px;
+                 border-radius: var(--radius-sm); overflow-x: auto; margin: 0.7em 0; font-size: 0.84em; }
+  .md-body pre code { background: transparent; padding: 0; border: 0; }
+  .md-body a { color: var(--signal); text-decoration: underline; text-underline-offset: 2px;
+               text-decoration-thickness: 1px; }
+  .md-body ul, .md-body ol { padding-left: 1.25em; margin: 0.5em 0; }
+  .md-body h2 { font-family: 'Fraunces', Georgia, serif; font-size: 1.12rem; font-weight: 600; margin-top: 1.1em; }
+  .md-body h3 { font-family: 'Fraunces', Georgia, serif; font-size: 1rem; font-weight: 600; margin-top: 0.85em; }
+  .md-body blockquote { border-left: 2px solid var(--signal); padding-left: 12px;
+                        color: var(--ink-muted); margin: 0.6em 0; font-style: italic; }
+  .md-body table { border-collapse: collapse; font-size: 0.9em; margin: .7em 0; }
+  .md-body th, .md-body td { border-bottom: 1px solid var(--line); padding: 5px 9px; text-align: left; }
+  .md-body th { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: .07em;
+                text-transform: uppercase; color: var(--ink-faint); font-weight: 500; }
+
+  .cite-chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: var(--signal-wash); color: var(--signal-ink);
+    font-family: 'JetBrains Mono', monospace; font-size: 10.5px;
+    padding: 1px 5px; border-radius: 4px; margin: 0 1px; cursor: pointer;
+    vertical-align: baseline; line-height: 1.3;
+    border: 1px solid color-mix(in srgb, var(--signal) 25%, transparent);
+    transition: background-color .15s ease;
+  }
+  .cite-chip:hover { background: color-mix(in srgb, var(--signal) 20%, transparent); }
+
+  .wikilink { color: var(--data); text-decoration: underline; text-underline-offset: 2px;
+              text-decoration-style: dotted; cursor: pointer; }
+
+  .clamp-1, .clamp-2, .clamp-3 { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
+  .clamp-1 { -webkit-line-clamp: 1; } .clamp-2 { -webkit-line-clamp: 2; } .clamp-3 { -webkit-line-clamp: 3; }
+
+  .picker-item { padding: 8px 12px; cursor: pointer; border-bottom: 1px solid var(--line); }
+  .picker-item:hover { background: var(--sunken); }
+  .picker-item:last-child { border-bottom: 0; }
+
+  /* ── Entrance: content settles in rather than snapping ──────────────── */
+  @keyframes settle { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: none; } }
+  .settle > * { animation: settle .34s cubic-bezier(.22,1,.36,1) both; }
+  .settle > *:nth-child(1) { animation-delay: .02s }
+  .settle > *:nth-child(2) { animation-delay: .06s }
+  .settle > *:nth-child(3) { animation-delay: .10s }
+  .settle > *:nth-child(4) { animation-delay: .14s }
+  .settle > *:nth-child(5) { animation-delay: .18s }
+  .settle > *:nth-child(n+6) { animation-delay: .21s }
+
+  /* ══ Cross-document view transitions ═════════════════════════════════
+     Navigation morphs instead of flashing: the shell stays put while the
+     content cross-fades, the page title slides, and the nav bubble travels
+     to its new item. Chromium + Safari 18; everywhere else this block is
+     inert and navigation behaves exactly as before. */
+  @view-transition { navigation: auto; }
+  ::view-transition-group(*) { animation-duration: .34s; animation-timing-function: cubic-bezier(.22,1,.36,1); }
+  ::view-transition-old(page-body) { animation: vt-out .18s ease both; }
+  ::view-transition-new(page-body) { animation: vt-in  .30s cubic-bezier(.22,1,.36,1) both; }
+  @keyframes vt-out { to   { opacity: 0; transform: translateY(-5px); } }
+  @keyframes vt-in  { from { opacity: 0; transform: translateY(8px); } }
+  /* The chrome shouldn't move at all — pin it so only content animates. */
+  .app-shell   { view-transition-name: app-shell; }
+  #app-sidebar { view-transition-name: sidebar; }
+  #page-title  { view-transition-name: page-title; }
+  #page-body   { view-transition-name: page-body; }
+  ::view-transition-group(app-shell),
+  ::view-transition-group(sidebar) { animation: none; }
+
+  @media (prefers-reduced-motion: reduce) {
+    @view-transition { navigation: none; }
+    *, *::before, *::after {
+      animation-duration: .001ms !important; animation-iteration-count: 1 !important;
+      transition-duration: .001ms !important;
     }
-    .dark .chip { background: #2a3142; color: #bfc6d2; }
-    .chip-brand    { background: #eef1ff; color: #3f47b3; }
-    .chip-success  { background: #dcfce7; color: #15803d; }
-    .chip-warn     { background: #fef3c7; color: #b45309; }
-    .chip-danger   { background: #ffe4e6; color: #be123c; }
-    .dark .chip-brand    { background: #1d2050; color: #a3b1ff; }
-    .dark .chip-success  { background: #052e16; color: #6ee7b7; }
-    .dark .chip-warn     { background: #451a03; color: #fcd34d; }
-    .dark .chip-danger   { background: #4c0519; color: #fda4af; }
+  }
 
-    .sparkline { height: 30px; display: block; }
+  /* ── Command palette ────────────────────────────────────────────────── */
+  #cmdk { position: fixed; inset: 0; z-index: 100; display: none; }
+  #cmdk.open { display: block; }
+  #cmdk-scrim { position: absolute; inset: 0; background: color-mix(in srgb, var(--ground) 72%, transparent);
+                backdrop-filter: blur(3px); animation: settle .16s ease both; }
+  #cmdk-panel {
+    position: relative; margin: 12vh auto 0; width: min(620px, calc(100vw - 40px));
+    background: var(--raised); border: 1px solid var(--line-firm); border-radius: 12px;
+    box-shadow: 0 24px 70px -20px rgba(23,21,18,0.4); overflow: hidden;
+    animation: cmdk-in .22s cubic-bezier(.22,1,.36,1) both;
+  }
+  .dark #cmdk-panel { box-shadow: 0 24px 70px -20px rgba(0,0,0,0.85); }
+  @keyframes cmdk-in { from { opacity: 0; transform: translateY(-10px) scale(.985); } }
+  #cmdk-input {
+    width: 100%; border: 0; background: transparent; color: var(--ink);
+    font-size: 15px; padding: 15px 18px; outline: none;
+    border-bottom: 1px solid var(--line); font-family: inherit;
+  }
+  #cmdk-input::placeholder { color: var(--ink-faint); }
+  #cmdk-list { max-height: 46vh; overflow-y: auto; padding: 6px; }
+  .cmdk-row {
+    display: flex; align-items: center; gap: 10px; padding: 8px 11px;
+    border-radius: var(--radius-sm); cursor: pointer; font-size: 13.5px; color: var(--ink-muted);
+  }
+  .cmdk-row .k { flex: 1; min-width: 0; color: var(--ink); }
+  .cmdk-row .sub { font-size: 11.5px; color: var(--ink-faint);
+                   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cmdk-row[aria-selected="true"] { background: var(--signal-wash); color: var(--signal-ink); }
+  .cmdk-row[aria-selected="true"] .k { color: var(--signal-ink); }
+  .cmdk-row .tag { font-family: 'JetBrains Mono', monospace; font-size: 9.5px; letter-spacing: .1em;
+                   text-transform: uppercase; color: var(--ink-faint); }
+  #cmdk-foot { border-top: 1px solid var(--line); padding: 7px 14px; display: flex; gap: 14px;
+               font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--ink-faint); }
+  kbd { font-family: 'JetBrains Mono', monospace; font-size: 10px; border: 1px solid var(--line-firm);
+        border-bottom-width: 2px; border-radius: 4px; padding: 1px 4px; color: var(--ink-muted); }
 
-    /* Aurora Light — soft lavender-grey bg behind the rounded app shell */
-    body { background-color: #eef0f7; }
-    .dark body { background-color: #07090f; }
-
-    /* The big rounded outer shell that wraps sidebar + main */
-    .app-shell {
-      background: #ffffff;
-      border-radius: 28px;
-      box-shadow: 0 1px 2px rgba(15,19,36,0.04), 0 30px 80px -30px rgba(15,19,36,0.20);
-      overflow: hidden;
-    }
-    .dark .app-shell {
-      background: #12161f;
-      box-shadow: 0 1px 2px rgba(0,0,0,0.5), 0 30px 80px -30px rgba(0,0,0,0.7);
-    }
-
-    /* Nav item — Active Orders style: active item is a popped indigo card */
-    .nav-link {
-      display: flex; align-items: center; gap: 12px;
-      padding: 9px 12px;
-      border-radius: 12px;
-      font-size: 13.5px;
-      color: #5a6478;
-      transition: all 0.18s ease;
-    }
-    .dark .nav-link { color: #bfc6d2; }
-    .nav-link:hover { background: #f3f4f8; color: #2a3142; }
-    .dark .nav-link:hover { background: #1c2230; color: #eef0f4; }
-
-    .nav-link.active {
-      background: #eef1ff;
-      color: #3f47b3;
-      font-weight: 600;
-      box-shadow: 0 4px 12px -4px rgba(94, 107, 240, 0.35);
-    }
-    .dark .nav-link.active {
-      background: linear-gradient(135deg, #1d2050 0%, #353c8f 100%);
-      color: #c7d0ff;
-      box-shadow: 0 4px 16px -4px rgba(124, 138, 255, 0.45);
-    }
-    .nav-link.active svg { color: #5e6bf0; }
-    .dark .nav-link.active svg { color: #a3b1ff; }
-
-    /* Dark-mode fallback overrides so existing jfr templates that hardcode
-       Tailwind grays remain legible without per-template edits. */
-    .dark .bg-white       { background-color: #1c2230 !important; }
-    .dark .bg-gray-50     { background-color: #12161f !important; }
-    .dark .bg-gray-100    { background-color: #1c2230 !important; }
-    .dark .bg-indigo-50   { background-color: #1d2050 !important; }
-    .dark .text-gray-800  { color: #eef0f4 !important; }
-    .dark .text-gray-700  { color: #dde1e8 !important; }
-    .dark .text-gray-600  { color: #bfc6d2 !important; }
-    .dark .text-gray-500  { color: #8b94a6 !important; }
-    .dark .text-gray-400  { color: #5a6478 !important; }
-    .dark .text-indigo-900 { color: #c7d0ff !important; }
-    .dark .text-indigo-700 { color: #a3b1ff !important; }
-    .dark .text-indigo-600 { color: #7c8aff !important; }
-    .dark .border-gray-200 { border-color: #2a3142 !important; }
-    .dark .border-gray-100 { border-color: #1c2230 !important; }
-    .dark .border-indigo-200 { border-color: #353c8f !important; }
-    .dark .divide-gray-100 > :not([hidden]) ~ :not([hidden]) { border-color: #1c2230 !important; }
-    .dark .hover\:bg-gray-50:hover { background-color: #12161f !important; }
+  /* ── Legacy hardcoded Tailwind greys in older jfr templates ─────────── */
+  .bg-white          { background-color: var(--raised) !important; }
+  .dark .bg-gray-50  { background-color: var(--sunken) !important; }
+  .dark .bg-gray-100 { background-color: var(--raised) !important; }
+  .dark .bg-indigo-50{ background-color: var(--signal-wash) !important; }
+  .dark .text-gray-800 { color: var(--ink) !important; }
+  .dark .text-gray-700 { color: var(--ink) !important; }
+  .dark .text-gray-600 { color: var(--ink-muted) !important; }
+  .dark .text-gray-500 { color: var(--ink-muted) !important; }
+  .dark .text-gray-400 { color: var(--ink-faint) !important; }
+  .text-indigo-900, .text-indigo-700, .text-indigo-600 { color: var(--signal-ink) !important; }
+  .dark .border-gray-200 { border-color: var(--line) !important; }
+  .dark .border-gray-100 { border-color: var(--line) !important; }
+  .dark .border-indigo-200 { border-color: color-mix(in srgb, var(--signal) 30%, transparent) !important; }
+  .dark .divide-gray-100 > :not([hidden]) ~ :not([hidden]) { border-color: var(--line) !important; }
+  .dark .hover\:bg-gray-50:hover { background-color: var(--sunken) !important; }
   </style>
   {% block head %}{% endblock %}
 </head>
-<body class="h-full text-ink-800 dark:text-ink-100 font-sans">
+<body class="h-full font-sans">
 
 <div class="h-full p-3 lg:p-4">
 <div class="app-shell flex h-full">
+
   <!-- ── Sidebar ────────────────────────────────────────────────── -->
-  <aside class="w-60 flex flex-col flex-shrink-0">
-    <!-- Brand -->
-    <div class="px-5 pt-5 pb-4 flex items-center gap-3">
-      <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center text-white"
-           style="box-shadow: 0 6px 16px -4px rgba(94,107,240,0.4)" title="LabUI">
-        <!-- connected nodes = your literature linked into a knowledge graph -->
-        <svg class="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"
-             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M12 5L5 12M12 5L19 11M5 12L11 19M19 11L11 19M5 12L19 11"/>
-          <circle cx="12" cy="5" r="2.1" fill="currentColor" stroke="none"/>
-          <circle cx="5" cy="12" r="2.1" fill="currentColor" stroke="none"/>
-          <circle cx="19" cy="11" r="2.1" fill="currentColor" stroke="none"/>
-          <circle cx="11" cy="19" r="2.1" fill="currentColor" stroke="none"/>
+  <aside id="app-sidebar" class="w-[228px] flex flex-col flex-shrink-0 border-r"
+         style="border-color: var(--line)">
+    <!-- Brand: two bubbles at rest -->
+    <a href="/" class="px-5 pt-5 pb-5 flex items-center gap-3 group">
+      <div class="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
+           style="background: var(--ink)" title="LabUI">
+        <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <circle cx="9.5" cy="14" r="5" fill="none" stroke="var(--signal)" stroke-width="1.5"/>
+          <circle cx="16.5" cy="8.5" r="2.9" fill="none" stroke="var(--data)" stroke-width="1.4"/>
+          <circle cx="18" cy="16" r="1.5" fill="var(--signal)"/>
         </svg>
       </div>
-      <div>
-        <div class="font-semibold tracking-tight text-[15px]">LabUI</div>
-        <div class="text-[10px] text-ink-400 dark:text-ink-500 -mt-0.5 uppercase tracking-wider font-semibold">Lab · Literature · Pubs</div>
+      <div class="min-w-0">
+        <div class="font-display text-[17px] leading-none tracking-tight"
+             style="color: var(--ink); font-variation-settings: 'SOFT' 0, 'WONK' 1, 'opsz' 40">LabUI</div>
+        <div class="eyebrow mt-1">Bench · Lit · Pubs</div>
       </div>
-    </div>
+    </a>
 
     {% set workspace_nav = [
       ('/',             'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6', 'Dashboard'),
+      ('/write',        'M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25', 'Write'),
       ('/manuscripts',  'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', 'Manuscripts'),
       ('/experiments',  'M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z', 'Experiments'),
       ('/schedule',     'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z', 'Schedule'),
@@ -292,38 +550,51 @@
       ('/research/memory', 'M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4', 'Memory'),
       ('/research/notes',  'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4', 'Notes'),
       ('/research/style',  'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z', 'Writing Style'),
+      ('/research/phrasebank', 'M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253M8 9h3m-3 3h3', 'Phrase Bank'),
     ] %}
 
     {% macro nav_link(href, icon_d, label) %}
       {% set active = request.url.path == href or (href != '/' and request.url.path.startswith(href)) %}
       <a href="{{ href }}" class="nav-link{% if active %} active{% endif %}">
-        <svg class="w-[18px] h-[18px] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="{{ icon_d }}"/>
+        <svg class="w-[17px] h-[17px] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="{{ icon_d }}"/>
         </svg>
         <span>{{ label }}</span>
       </a>
     {% endmacro %}
 
-    <nav class="flex-1 overflow-y-auto scroll-thin px-3 py-2 space-y-5">
+    <nav class="flex-1 overflow-y-auto scroll-thin px-3 pb-2 space-y-5">
       <div>
-        <div class="text-[10px] uppercase tracking-wider text-ink-400 dark:text-ink-500 px-3 mb-2 font-semibold">Workspace</div>
-        <div class="space-y-1">{% for href, icon, label in workspace_nav %}{{ nav_link(href, icon, label) }}{% endfor %}</div>
+        <div class="nav-section px-3 mb-2">Workspace</div>
+        <div class="space-y-0.5">{% for href, icon, label in workspace_nav %}{{ nav_link(href, icon, label) }}{% endfor %}</div>
       </div>
       <div>
-        <div class="text-[10px] uppercase tracking-wider text-ink-400 dark:text-ink-500 px-3 mb-2 font-semibold">Research Lab</div>
-        <div class="space-y-1">{% for href, icon, label in lab_nav %}{{ nav_link(href, icon, label) }}{% endfor %}</div>
+        <div class="nav-section px-3 mb-2">Research Lab</div>
+        <div class="space-y-0.5">{% for href, icon, label in lab_nav %}{{ nav_link(href, icon, label) }}{% endfor %}</div>
       </div>
     </nav>
 
+    <!-- Command hint -->
+    <button onclick="cmdkOpen()"
+            class="mx-3 mb-2 flex items-center gap-2 px-3 py-2 rounded-md text-left transition"
+            style="border: 1px solid var(--line); color: var(--ink-faint)"
+            onmouseover="this.style.borderColor='var(--line-firm)'"
+            onmouseout="this.style.borderColor='var(--line)'">
+      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+      <span class="text-[12px] flex-1">Search</span>
+      <kbd>⌘K</kbd>
+    </button>
+
     <!-- Status footer -->
-    <div class="px-4 pt-3 pb-4 text-[11px] text-ink-500 dark:text-ink-400 space-y-1.5"
-         id="status-footer">
+    <div class="px-4 pt-3 pb-4 text-[11px] space-y-2" id="status-footer"
+         style="color: var(--ink-muted); border-top: 1px solid var(--line)">
       <div class="flex items-center justify-between" title="Ollama API">
         <span class="flex items-center gap-2"><span class="status-dot" id="dot-ollama"></span>Ollama</span>
-        <!-- Model picker: click the model name to switch -->
         <div x-data="{open: false}" @click.outside="open = false" class="relative">
           <button @click="open = !open; if (open) refreshModelDropdown();"
-                  class="font-mono text-[10px] text-ink-400 hover:text-brand-600 dark:hover:text-brand-300 flex items-center gap-1 px-1 py-0.5 rounded hover:bg-ink-50 dark:hover:bg-ink-800"
+                  class="font-mono text-[10px] flex items-center gap-1 px-1 py-0.5 rounded transition"
+                  style="color: var(--ink-faint)"
+                  onmouseover="this.style.color='var(--signal)'" onmouseout="this.style.color='var(--ink-faint)'"
                   title="Click to switch model">
             <span id="active-model-label">—</span>
             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -331,31 +602,35 @@
             </svg>
           </button>
           <div x-show="open" x-cloak x-transition.opacity
-               class="absolute right-0 bottom-full mb-2 w-52 bg-white dark:bg-ink-900 rounded-xl shadow-[0_10px_30px_-10px_rgba(15,19,36,0.25)] dark:shadow-[0_10px_30px_-10px_rgba(0,0,0,0.6)] border border-ink-200 dark:border-ink-800 p-1.5 z-50">
-            <div class="px-3 pt-2 pb-1 text-[10px] uppercase tracking-wider font-semibold text-ink-400 flex items-center justify-between">
-              <span>Generator model</span>
-              <button @click="refreshModelDropdown()" class="text-ink-300 hover:text-brand-600" title="Refresh">↻</button>
+               class="absolute right-0 bottom-full mb-2 w-52 rounded-lg p-1.5 z-50"
+               style="background: var(--raised); border: 1px solid var(--line-firm); box-shadow: 0 16px 40px -16px rgba(0,0,0,.4)">
+            <div class="px-3 pt-2 pb-1 eyebrow flex items-center justify-between">
+              <span>Generator</span>
+              <button @click="refreshModelDropdown()" title="Refresh" style="color: var(--ink-faint)">↻</button>
             </div>
             <div id="model-list" class="max-h-64 overflow-y-auto scroll-thin">
-              <div class="text-center text-[11px] text-ink-400 py-3">Loading…</div>
+              <div class="text-center text-[11px] py-3" style="color: var(--ink-faint)">Loading…</div>
             </div>
-            <div class="px-3 pt-2 pb-1 text-[10px] text-ink-400 border-t border-ink-100 dark:border-ink-800 mt-1">
+            <div class="px-3 pt-2 pb-1 text-[10px] mt-1"
+                 style="color: var(--ink-faint); border-top: 1px solid var(--line)">
               Applies to chat. Stored in this browser.
             </div>
           </div>
         </div>
       </div>
-      <div class="flex items-center justify-between" title="Embedding model — fixed by the index; changing it requires a full re-embed">
+      <div class="flex items-center justify-between" title="Embedding model — fixed by the index">
         <span class="flex items-center gap-2"><span class="status-dot" id="dot-embed"></span>Embeddings</span>
-        <span id="lbl-embed" class="text-ink-400 font-mono text-[10px] truncate max-w-[120px]">—</span>
+        <span id="lbl-embed" class="font-mono text-[10px] truncate max-w-[110px]" style="color: var(--ink-faint)">—</span>
       </div>
       <div class="flex items-center justify-between" title="Index size">
         <span class="flex items-center gap-2"><span class="status-dot" id="dot-index"></span>Index</span>
-        <span id="lbl-papers" class="text-ink-400">—</span>
+        <span id="lbl-papers" class="font-mono text-[10px]" style="color: var(--ink-faint)">—</span>
       </div>
-      <div class="flex items-center justify-between gap-2 pt-2 mt-2 border-t border-ink-100 dark:border-ink-800">
-        <a href="/api/docs" class="text-ink-400 hover:text-brand-600 dark:hover:text-brand-300">API docs ↗</a>
-        <button onclick="toggleTheme()" class="text-ink-400 hover:text-brand-600 dark:hover:text-brand-300"
+      <div class="flex items-center justify-between gap-2 pt-2 mt-1" style="border-top: 1px solid var(--line)">
+        <a href="/api/docs" class="transition" style="color: var(--ink-faint)"
+           onmouseover="this.style.color='var(--signal)'" onmouseout="this.style.color='var(--ink-faint)'">API docs ↗</a>
+        <button onclick="toggleTheme()" class="transition" style="color: var(--ink-faint)"
+                onmouseover="this.style.color='var(--signal)'" onmouseout="this.style.color='var(--ink-faint)'"
                 title="Toggle light/dark">
           <svg class="w-3.5 h-3.5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -367,30 +642,53 @@
   </aside>
 
   <!-- ── Main ───────────────────────────────────────────────────── -->
-  <main class="flex-1 overflow-y-auto scroll-thin bg-[#fafbff] dark:bg-[#0f131c]">
-    <header class="sticky top-0 z-10 backdrop-blur px-8 py-5 flex items-center justify-between gap-4"
-            style="background-color: rgba(250, 251, 255, 0.82);">
+  <main class="flex-1 overflow-y-auto scroll-thin app-main">
+    <header class="sticky top-0 z-10 px-8 pt-7 pb-5 flex items-end justify-between gap-4"
+            style="background: linear-gradient(to bottom, var(--surface) 62%, color-mix(in srgb, var(--surface) 85%, transparent) 88%, transparent)">
       <div class="min-w-0">
-        <h1 class="text-2xl font-bold text-ink-900 dark:text-ink-50 tracking-tight">{% block heading %}{% endblock %}</h1>
-        <p class="text-sm text-ink-400 dark:text-ink-500 mt-0.5">{% block subtitle %}{% endblock %}</p>
+        <h1 id="page-title" class="text-[30px] leading-[1.1]" style="color: var(--ink)">{% block heading %}{% endblock %}</h1>
+        <p class="text-[13px] mt-1.5" style="color: var(--ink-muted)">{% block subtitle %}{% endblock %}</p>
       </div>
-      <div class="flex gap-2 flex-shrink-0">{% block header_actions %}{% endblock %}</div>
+      <div class="flex gap-2 flex-shrink-0 pb-1">{% block header_actions %}{% endblock %}</div>
     </header>
-    <div class="px-8 pb-8">
+    <div id="page-body" class="px-8 pb-10">
       {% block content %}{% endblock %}
     </div>
   </main>
 </div>
 </div>
 
+<!-- ── Command palette ─────────────────────────────────────────────── -->
+<div id="cmdk" role="dialog" aria-modal="true" aria-label="Command palette">
+  <div id="cmdk-scrim" onclick="cmdkClose()"></div>
+  <div id="cmdk-panel">
+    <input id="cmdk-input" type="text" autocomplete="off" spellcheck="false"
+           placeholder="Go to a page, search your library, start writing…">
+    <div id="cmdk-list"></div>
+    <div id="cmdk-foot">
+      <span><kbd>↑</kbd><kbd>↓</kbd> move</span>
+      <span><kbd>⏎</kbd> open</span>
+      <span><kbd>esc</kbd> close</span>
+      <span style="margin-left:auto" id="cmdk-hint">type to search papers</span>
+    </div>
+  </div>
+</div>
+
 <script>
-  // ── Theme toggle ─────────────────────────────────────────────────
+  // ── Theme ────────────────────────────────────────────────────────
   function toggleTheme() {
     const root = document.documentElement;
-    const isDark = root.classList.toggle('dark');
-    localStorage.setItem('labui-theme', isDark ? 'dark' : 'light');
+    const apply = () => {
+      const isDark = root.classList.toggle('dark');
+      localStorage.setItem('labui-theme', isDark ? 'dark' : 'light');
+      window.dispatchEvent(new CustomEvent('labui-theme-changed',
+        { detail: { theme: isDark ? 'dark' : 'light' } }));
+    };
+    // Cross-fade the whole document instead of snapping between palettes.
+    if (document.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      document.startViewTransition(apply);
+    } else { apply(); }
   }
-  // Follow system changes if the user hasn't explicitly chosen
   try {
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
       if (!localStorage.getItem('labui-theme')) {
@@ -416,18 +714,14 @@
       setDot('dot-index',  s.index);
       if (s.gen_model_name) window.labuiDefaultModel = s.gen_model_name;
       updateActiveModelLabel();
+      const e = document.getElementById('lbl-embed');
+      if (e && s.embed_model) e.textContent = String(s.embed_model).split('/').pop();
       const p = document.getElementById('lbl-papers');
-      if (p) p.textContent = `${s.papers || 0} papers`;
-      const em = document.getElementById('lbl-embed');
-      if (em && s.embed_model_name) {
-        const short = s.embed_model_name.split('/').pop();
-        em.textContent = s.embed_dim ? `${short} · ${s.embed_dim}d` : short;
-        em.title = `${s.embed_model_name}${s.embed_dim ? ' · ' + s.embed_dim + '-dim' : ''} (fixed by the index)`;
-      }
-    } catch (e) { /* server might be booting */ }
+      if (p && s.papers != null) p.textContent = s.papers + ' papers';
+    } catch (e) { /* offline is fine; dots stay grey */ }
   }
   refreshStatus();
-  setInterval(refreshStatus, 15000);
+  setInterval(refreshStatus, 30000);
 
   // ── Model picker ─────────────────────────────────────────────────
   window.labuiModels = [];
@@ -448,64 +742,157 @@
   }
   function updateActiveModelLabel() {
     const el = document.getElementById('active-model-label');
-    if (el) el.textContent = getActiveModel() || '—';
-    // Also update any in-page generator labels
-    document.querySelectorAll('[data-gen-label]').forEach(e => {
-      e.textContent = getActiveModel() || '—';
-    });
+    if (!el) return;
+    const m = getActiveModel();
+    el.textContent = m ? (m.length > 16 ? m.slice(0, 15) + '…' : m) : '—';
+    el.title = m || 'no model';
   }
-
   async function refreshModelDropdown() {
-    const list = document.getElementById('model-list');
-    if (!list) return;
-    list.innerHTML = '<div class="text-center text-[11px] text-ink-400 py-3"><span class="spinner"></span></div>';
     try {
       const r = await fetch('/api/rag/models');
       const d = await r.json();
       window.labuiModels = d.models || [];
       if (d.default && !window.labuiDefaultModel) window.labuiDefaultModel = d.default;
-      renderModelDropdown();
-    } catch (e) {
-      list.innerHTML = `<div class="text-rose-500 text-[11px] px-3 py-2">${e.message}</div>`;
-    }
+    } catch (e) { window.labuiModels = []; }
+    updateActiveModelLabel();
+    renderModelDropdown();
   }
-
   function renderModelDropdown() {
     const list = document.getElementById('model-list');
     if (!list) return;
+    const active = getActiveModel();
     if (!window.labuiModels.length) {
-      list.innerHTML = '<div class="text-center text-[11px] text-ink-400 py-3">No Ollama models found.<br/>Pull one with <code>ollama pull &lt;name&gt;</code></div>';
+      list.innerHTML = '<div class="text-center text-[11px] py-3" style="color: var(--ink-faint)">No models found</div>';
       return;
     }
-    const active = getActiveModel();
-    const isOverridden = !!localStorage.getItem('labui-gen-model');
     list.innerHTML = window.labuiModels.map(m => {
-      const isActive = active === m.name;
-      const meta = [m.parameter_size, m.size_gb ? `${m.size_gb} GB` : null, m.quantization]
-        .filter(Boolean).join(' · ');
-      return `
-        <button onclick="pickModel('${m.name.replace(/'/g, "\\'")}'); this.closest('[x-data]').__x.$data.open = false;"
-          class="w-full text-left px-3 py-2 rounded-md hover:bg-ink-50 dark:hover:bg-ink-800 flex items-center justify-between gap-2 transition ${isActive ? 'bg-brand-50 dark:bg-brand-950' : ''}">
-          <div class="min-w-0 flex-1">
-            <div class="font-mono text-xs truncate ${isActive ? 'text-brand-700 dark:text-brand-300 font-semibold' : ''}">${m.name}${m.is_default ? ' <span class=\"text-[9px] text-ink-400\">default</span>' : ''}</div>
-            <div class="text-[10px] text-ink-400 truncate">${meta || ''}</div>
-          </div>
-          ${isActive ? '<svg class="w-4 h-4 text-brand-600 dark:text-brand-300 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>' : ''}
-        </button>`;
-    }).join('') + (isOverridden ? `
-      <button onclick="clearActiveModelOverride(); refreshModelDropdown();"
-        class="w-full text-left px-3 py-2 mt-1 text-[11px] text-ink-500 hover:text-brand-600 hover:bg-ink-50 dark:hover:bg-ink-800 rounded-md transition border-t border-ink-100 dark:border-ink-800">
-        ↻ Reset to server default
-      </button>` : '');
+      const on = m.name === active;
+      const size = m.size ? (m.size / 1e9).toFixed(1) + ' GB' : '';
+      return `<button onclick="pickModel('${m.name.replace(/'/g, "\\'")}')"
+        class="w-full text-left px-3 py-1.5 rounded-md flex items-center gap-2 transition"
+        style="${on ? 'background: var(--signal-wash); color: var(--signal-ink)' : 'color: var(--ink-muted)'}">
+        <span class="status-dot ${on ? 'ok' : ''}"></span>
+        <span class="font-mono text-[11px] flex-1 truncate">${m.name}</span>
+        <span class="font-mono text-[9.5px]" style="color: var(--ink-faint)">${size}</span>
+      </button>`;
+    }).join('');
   }
-
   function pickModel(name) {
     setActiveModel(name);
     renderModelDropdown();
   }
-
-  // Initial load — get models so label is populated even before dropdown opens
   refreshModelDropdown();
+
+  // ── Command palette ──────────────────────────────────────────────
+  // Everything reachable from one keystroke: pages, writing projects, and a
+  // live search over the paper library.
+  const CMDK_PAGES = [
+    ['Dashboard', '/', 'page'], ['Write', '/write', 'page'],
+    ['Manuscripts', '/manuscripts', 'page'], ['Experiments', '/experiments', 'page'],
+    ['Schedule', '/schedule', 'page'], ['Recommend a journal', '/recommend', 'page'],
+    ['Submissions', '/submissions', 'page'], ['Journals', '/journals', 'page'],
+    ['Chat with Papers', '/research/chat', 'lab'], ['Paper Search', '/research/search', 'lab'],
+    ['Knowledge Graph', '/research/graph', 'lab'], ['Memory', '/research/memory', 'lab'],
+    ['Notes', '/research/notes', 'lab'], ['Writing Style', '/research/style', 'lab'],
+    ['Phrase Bank', '/research/phrasebank', 'lab'], ['Upload papers', '/research/upload', 'lab'],
+  ];
+  let cmdkRows = [], cmdkIdx = 0, cmdkSeq = 0;
+
+  function cmdkOpen() {
+    const el = document.getElementById('cmdk');
+    el.classList.add('open');
+    const inp = document.getElementById('cmdk-input');
+    inp.value = ''; inp.focus();
+    cmdkRender('');
+  }
+  function cmdkClose() { document.getElementById('cmdk').classList.remove('open'); }
+
+  function cmdkStatic(q) {
+    const t = q.trim().toLowerCase();
+    const hits = CMDK_PAGES
+      .filter(([label]) => !t || label.toLowerCase().includes(t))
+      .map(([label, href, tag]) => ({ label, sub: href, tag, href }));
+    const acts = [
+      { label: 'Toggle light / dark', sub: 'theme', tag: 'action', fn: toggleTheme },
+      { label: 'New writing project', sub: '/write', tag: 'action', href: '/write' },
+    ].filter(a => !t || a.label.toLowerCase().includes(t));
+    return [...hits, ...acts];
+  }
+
+  async function cmdkRender(q) {
+    const seq = ++cmdkSeq;
+    cmdkRows = cmdkStatic(q);
+    cmdkIdx = 0;
+    cmdkPaint();
+    const t = q.trim();
+    document.getElementById('cmdk-hint').textContent =
+      t.length >= 2 ? 'searching library…' : 'type to search papers';
+    if (t.length < 2) return;
+    try {
+      const r = await fetch('/api/rag/cite/search?q=' + encodeURIComponent(t) + '&limit=6');
+      if (!r.ok || seq !== cmdkSeq) return;
+      const papers = await r.json();
+      if (seq !== cmdkSeq) return;
+      cmdkRows = cmdkRows.concat((papers || []).map(p => ({
+        label: p.title || p.paper_id,
+        sub: [p.authors, p.year].filter(Boolean).join(' · '),
+        tag: 'paper',
+        href: '/research/search?q=' + encodeURIComponent(p.title || p.paper_id),
+      })));
+      document.getElementById('cmdk-hint').textContent = (papers || []).length + ' papers';
+      cmdkPaint();
+    } catch (e) { document.getElementById('cmdk-hint').textContent = 'library search unavailable'; }
+  }
+
+  function cmdkPaint() {
+    const list = document.getElementById('cmdk-list');
+    if (!cmdkRows.length) {
+      list.innerHTML = '<div class="cmdk-row" style="cursor:default">Nothing matches.</div>';
+      return;
+    }
+    list.innerHTML = cmdkRows.map((r, i) => `
+      <div class="cmdk-row" role="option" aria-selected="${i === cmdkIdx}" data-i="${i}">
+        <span class="k">
+          <span style="display:block">${escapeCmdk(r.label)}</span>
+          ${r.sub ? `<span class="sub">${escapeCmdk(r.sub)}</span>` : ''}
+        </span>
+        <span class="tag">${r.tag}</span>
+      </div>`).join('');
+    [...list.children].forEach(el => {
+      el.addEventListener('click', () => cmdkGo(parseInt(el.dataset.i, 10)));
+      el.addEventListener('mousemove', () => {
+        const i = parseInt(el.dataset.i, 10);
+        if (i !== cmdkIdx) { cmdkIdx = i; cmdkPaint(); }
+      });
+    });
+    const sel = list.querySelector('[aria-selected="true"]');
+    if (sel) sel.scrollIntoView({ block: 'nearest' });
+  }
+  function escapeCmdk(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g,
+      c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function cmdkGo(i) {
+    const r = cmdkRows[i];
+    if (!r) return;
+    cmdkClose();
+    if (r.fn) r.fn();
+    else if (r.href) window.location.href = r.href;
+  }
+
+  document.addEventListener('keydown', (e) => {
+    const open = document.getElementById('cmdk').classList.contains('open');
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+      e.preventDefault(); open ? cmdkClose() : cmdkOpen(); return;
+    }
+    if (!open) return;
+    if (e.key === 'Escape')    { e.preventDefault(); cmdkClose(); }
+    if (e.key === 'ArrowDown') { e.preventDefault(); cmdkIdx = Math.min(cmdkIdx + 1, cmdkRows.length - 1); cmdkPaint(); }
+    if (e.key === 'ArrowUp')   { e.preventDefault(); cmdkIdx = Math.max(cmdkIdx - 1, 0); cmdkPaint(); }
+    if (e.key === 'Enter')     { e.preventDefault(); cmdkGo(cmdkIdx); }
+  });
+  document.getElementById('cmdk-input')
+    .addEventListener('input', (e) => cmdkRender(e.target.value));
 </script>
 
 <!-- KaTeX + marked extension: provides window.katex and window.markedKatex.

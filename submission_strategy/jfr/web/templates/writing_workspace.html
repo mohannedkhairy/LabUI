@@ -1,0 +1,1457 @@
+{% extends "base.html" %}
+{% block title %}{{ project_id }} — Write{% endblock %}
+{% block heading %}Write{% endblock %}
+
+{% block content %}
+<style>
+  /* ── Page-local only. Colour, type and component tokens come from base.html;
+        redeclaring them here would fight the theme. ──────────────────────── */
+
+  .ref-list { padding-left: 1.4em; font-size: 0.85em; color: var(--ink-muted); }
+  .ref-doi  { color: var(--signal); text-decoration: none; font-size: 0.9em; }
+
+  /* ── Frame ──────────────────────────────────────────────────────────────
+     One column that claims the whole viewport: two thin bars of chrome on top,
+     then the editor takes every pixel that is left. --ws-h is measured in JS
+     (fitWorkspace) because the page header above is sticky and its height is
+     not knowable from CSS alone. */
+  #ws { display: flex; flex-direction: column; gap: 10px;
+        height: var(--ws-h, 66vh); min-height: 440px; }
+  .ws-body { flex: 1; min-height: 0; display: flex; align-items: stretch; gap: 0; }
+  .ws-editor { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden;
+               container-type: inline-size; }
+  /* Below this width the toolbar would wrap to a second row and steal a line
+     from the manuscript, so the verbs drop back to their icons instead. */
+  @container (max-width: 1060px) {
+    #toolbar .btn-label { display: none; }
+    #toolbar .toolbar-btn { gap: 0; }
+    #toolbar .btn-signal .btn-label { display: inline; }   /* Save keeps its word */
+    #toolbar .btn-signal { gap: 6px; }
+    #toolbar #save-status { max-width: 84px; }
+    #toolbar #editor-title { width: 112px !important; }
+    #toolbar .icon-btn { padding: 5px 5px; }
+    #toolbar .tb-group { gap: 4px; }
+  }
+  /* Narrower still (a drawer open on a 13-inch screen): the group dividers and
+     the Save word go, rather than surrendering a second toolbar row. */
+  @container (max-width: 820px) {
+    #toolbar .tb-rule { display: none; }
+    #toolbar .btn-signal .btn-label { display: none; }
+    #toolbar .btn-signal { gap: 0; }
+    #toolbar #save-status { max-width: 64px; }
+  }
+
+  /* ── Section rail: the old left column, laid flat ──────────────────────── */
+  .sec-rail { display: flex; align-items: center; gap: 10px; padding: 7px 10px 7px 14px; }
+  .sec-scroll { flex: 1; min-width: 0; display: flex; align-items: center; gap: 5px;
+                overflow-x: auto; overflow-y: hidden; padding: 2px 0; }
+  .sec-tab { display: inline-flex; align-items: center; gap: 7px; flex: 0 0 auto;
+             border: 1px solid transparent; border-radius: var(--radius-sm);
+             padding: 5px 10px; font-size: 12.5px; cursor: pointer; white-space: nowrap;
+             color: var(--ink-muted); max-width: 260px;
+             transition: background-color .16s ease, color .16s ease, border-color .16s ease; }
+  .sec-tab:hover { background: var(--sunken); color: var(--ink); }
+  .sec-tab.active { background: color-mix(in srgb, var(--signal) 10%, transparent);
+                    border-color: color-mix(in srgb, var(--signal) 34%, transparent);
+                    color: var(--signal-ink); font-weight: 600; }
+  .dark .sec-tab.active { color: var(--signal); }
+  .sec-n { font-family: 'JetBrains Mono', monospace; font-size: 10px; opacity: .6; }
+  .sec-t { overflow: hidden; text-overflow: ellipsis; }
+  .sec-ctl { display: none; align-items: center; gap: 1px; margin-left: 3px; }
+  .sec-tab.active .sec-ctl { display: inline-flex; }
+  .sec-ctl button { font-size: 11px; line-height: 1; padding: 2px 4px;
+                    border-radius: 4px; color: var(--ink-faint); }
+  .sec-ctl button:hover { color: var(--signal); background: var(--raised); }
+  .sec-ctl button.sec-del:hover { color: var(--danger); }
+
+  /* ── Editor ─────────────────────────────────────────────────────────────
+     The rules that used to live here targeted CodeMirror 6 class names
+     (.cm-editor / .cm-scroller) while the page loads CodeMirror 5, so none of
+     them ever applied and the editor sat at CM5's stock 300px. These are the
+     CM5 selectors, driven off the same tokens as the rest of the app. */
+  #editor-wrap { flex: 1; min-height: 0; overflow: hidden; }
+  #editor-wrap.image-drag { outline: 2px dashed var(--signal); outline-offset: -8px; background: color-mix(in srgb, var(--signal) 6%, transparent); }
+  #editor-host { height: 100%; max-width: var(--measure, 86ch); margin: 0 auto; padding: 0 6px; }
+  #ws.wide #editor-host { max-width: none; }
+  #editor { height: 100%; }
+
+  /* Every rule below is scoped to #editor on purpose. CodeMirror's own sheet
+     loads after this block and its theme rules are .cm-s-default-prefixed, so
+     an unscoped .CodeMirror or .cm-header would lose both the specificity tie
+     and the source-order tie — which is why the previous CM6-named rules left
+     a white editor sitting inside the dark theme. */
+  #editor > .CodeMirror { height: 100%; }
+  #editor .CodeMirror { background: transparent; color: var(--ink);
+                        font-family: 'JetBrains Mono', ui-monospace, monospace;
+                        font-size: 14px; line-height: 1.72; }
+  #editor .CodeMirror-lines { padding: 26px 0 30vh; }        /* room to write past the fold */
+  #editor .CodeMirror-gutters { background: transparent; border-right: 0; }
+  #editor .CodeMirror-cursor { border-left: 2px solid var(--signal); }
+  #editor .CodeMirror-selected { background: color-mix(in srgb, var(--signal) 15%, transparent) !important; }
+  #editor .CodeMirror-focused .CodeMirror-selected { background: color-mix(in srgb, var(--signal) 21%, transparent) !important; }
+  #editor .CodeMirror-activeline-background { background: color-mix(in srgb, var(--ink) 4%, transparent); }
+  #editor .CodeMirror pre.CodeMirror-placeholder { color: var(--ink-faint); }
+  #editor .CodeMirror-hscrollbar { display: none !important; }
+  #editor .CodeMirror-vscrollbar { scrollbar-width: thin; scrollbar-color: var(--line-firm) transparent; }
+  #editor .CodeMirror-vscrollbar::-webkit-scrollbar { width: 9px; }
+  #editor .CodeMirror-vscrollbar::-webkit-scrollbar-track { background: transparent; }
+  #editor .CodeMirror-vscrollbar::-webkit-scrollbar-thumb { background: var(--line-firm); border-radius: 6px;
+                                                            border: 2px solid transparent; background-clip: content-box; }
+
+  /* Markdown tokens: same palette as the rendered preview, so source and
+     output read as one document rather than two. */
+  #editor .cm-header  { color: var(--signal-ink); font-weight: 700; }
+  #editor .cm-header-1 { font-size: 1.26em; }
+  #editor .cm-header-2 { font-size: 1.13em; }
+  #editor .cm-header-3 { font-size: 1.04em; }
+  #editor .cm-strong  { color: var(--ink); font-weight: 700; }
+  #editor .cm-em      { font-style: italic; }
+  #editor .cm-quote   { color: var(--data); font-style: italic; }
+  #editor .cm-link    { color: var(--data); }
+  #editor .cm-url, #editor .cm-comment { color: var(--ink-faint); }
+  #editor .cm-variable-2, #editor .cm-variable-3 { color: var(--ink-muted); }
+  #editor .cm-formatting { color: var(--ink-muted); font-weight: 400; }
+  #editor .cm-strikethrough { color: var(--ink-faint); text-decoration: line-through; }
+
+  /* ── Drawer: everything that is not the manuscript ──────────────────────── */
+  .ws-resize { flex: 0 0 10px; align-self: stretch; cursor: col-resize; position: relative;
+               touch-action: none; }
+  .ws-resize::before { content: ''; position: absolute; inset: 12px 4px; border-radius: 2px;
+                       background: transparent; transition: background-color .15s ease; }
+  .ws-resize:hover::before, .ws-resize.dragging::before { background: color-mix(in srgb, var(--signal) 40%, transparent); }
+  .ws-resize[hidden] { display: none; }
+
+  .ws-drawer { flex: 0 0 auto; width: var(--drawer-w, 400px); max-width: 46%; min-width: 0;
+               display: flex; flex-direction: column; overflow: hidden; }
+  .ws-drawer[hidden] { display: none; }
+  .drawer-tabs { display: flex; gap: 2px; padding: 6px; border-bottom: 1px solid var(--line); }
+  .drawer-tab { flex: 1; text-align: center; font-size: 11.5px; padding: 5px 4px;
+                border-radius: var(--radius-sm); color: var(--ink-muted); cursor: pointer;
+                white-space: nowrap; transition: background-color .15s ease, color .15s ease; }
+  .drawer-tab:hover { background: var(--sunken); color: var(--ink); }
+  .drawer-tab.active { background: var(--sunken); color: var(--ink); font-weight: 600;
+                       box-shadow: inset 0 -2px 0 var(--signal); }
+  .drawer-panel { flex: 1; min-height: 0; overflow-y: auto; }
+  .drawer-panel[hidden] { display: none; }
+  .paper-preview { --paper-bg: var(--raised); --paper-fs: 14px; --paper-lh: 1.72;
+                   --paper-mt: 22mm; --paper-mr: 22mm; --paper-mb: 22mm; --paper-ml: 22mm;
+                   min-height: 100%; padding: var(--paper-mt) var(--paper-mr) var(--paper-mb) var(--paper-ml);
+                   background: var(--paper-bg); color: var(--ink); font-size: var(--paper-fs); line-height: var(--paper-lh);
+                   box-shadow: 0 1px 5px rgba(0,0,0,.08); }
+  .paper-preview.lined { background-color: var(--paper-bg); background-image: linear-gradient(to bottom, transparent 0, transparent calc(1.72em - 1px), color-mix(in srgb, var(--data) 20%, transparent) calc(1.72em - 1px), color-mix(in srgb, var(--data) 20%, transparent) 1.72em); background-size: 100% 1.72em; }
+  .paper-preview.grid { background-image: linear-gradient(color-mix(in srgb, var(--ink) 10%, transparent) 1px, transparent 1px), linear-gradient(90deg, color-mix(in srgb, var(--ink) 10%, transparent) 1px, transparent 1px); background-size: 22px 22px; }
+  .paper-preview.dot { background-image: radial-gradient(color-mix(in srgb, var(--ink) 28%, transparent) 1px, transparent 1px); background-size: 14px 14px; }
+  .paper-preview.blank { background-image: none; }
+  .paper-preview.tinted { background: var(--paper-bg); }
+  .paper-preview img { max-width: 100%; height: auto; display: block; margin: 1em auto; border-radius: 4px; }
+  .paper-preview figure { margin: 1.2em 0; text-align: center; break-inside: avoid; }
+  .paper-preview figcaption { color: var(--ink-muted); font-size: .88em; margin-top: .45em; }
+  .paper-preview .page-break { break-before: page; page-break-before: always; height: 0; margin: 0; }
+  .layout-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .layout-grid label { display: flex; flex-direction: column; gap: 3px; }
+  .layout-grid label > span { font-size: 10px; color: var(--ink-faint); text-transform: uppercase; letter-spacing: .06em; }
+  .layout-grid input, .layout-grid select { width: 100%; font-size: 12px; }
+  .asset-list { display: flex; flex-wrap: wrap; gap: 6px; }
+  .asset-chip { display: inline-flex; align-items: center; gap: 5px; padding: 4px 7px; border-radius: 6px; background: var(--sunken); color: var(--ink-muted); font-size: 11px; cursor: pointer; }
+  .asset-chip:hover { color: var(--signal); }
+  .drawer-sub { padding: 9px 14px; border-bottom: 1px solid var(--line);
+                display: flex; align-items: center; gap: 8px; }
+
+  #add-box[hidden] { display: none; }
+  #save-status { max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #section-select { max-width: 118px; }
+
+  .tb-group { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .tb-rule  { flex: 0 0 1px; align-self: stretch; margin: 2px 2px; background: var(--line); }
+
+  .icon-btn { padding: 5px 7px; }
+  .icon-btn.on { border-color: var(--signal); color: var(--signal);
+                 background: color-mix(in srgb, var(--signal) 9%, transparent); }
+
+  .picker-pop { position: absolute; z-index: 60; width: 380px; max-height: 380px;
+                display: flex; flex-direction: column; background: var(--raised);
+                border: 1px solid var(--line-firm); border-radius: 10px;
+                box-shadow: 0 16px 40px -12px rgba(0,0,0,0.28); }
+
+  /* ── Focus mode: the app chrome folds away, nothing else moves ─────────── */
+  #app-sidebar { transition: width .3s cubic-bezier(.22,1,.36,1), opacity .2s ease; }
+  body.ws-focus #app-sidebar { width: 0; opacity: 0; overflow: hidden; border-right-width: 0; }
+  body.ws-focus main > header { display: none; }
+  body.ws-focus #page-body { padding: 14px 16px 14px; }
+</style>
+
+<div id="ws">
+
+  <!-- ── Project bar ────────────────────────────────────────────────────── -->
+  <div class="tile tile-flush px-4 py-2 flex flex-wrap items-center gap-2">
+    <input id="project-title" class="flex-1 min-w-48 bg-transparent text-[15px] font-semibold outline-none"
+           style="color: var(--ink)" placeholder="Manuscript title" value="">
+    <div class="flex items-center gap-1.5">
+      <button onclick="exportMd()" class="toolbar-btn" title="Download the combined manuscript (sections + references)">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3"/></svg>
+        .md
+      </button>
+      <button onclick="exportBib()" class="toolbar-btn" title="Download BibTeX of the cited papers">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3"/></svg>
+        .bib
+      </button>
+      <button id="push-jfr-btn" onclick="pushJfr()" class="toolbar-btn" title="Create/update the journal-fit manuscript record (title, abstract, claim, techniques)">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2M9 14h6m-6 4h6"/></svg>
+        <span id="push-jfr-label">Push to JFR</span>
+      </button>
+      <button onclick="deleteProject()" class="toolbar-btn icon-btn" title="Delete project">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- ── Section rail ───────────────────────────────────────────────────── -->
+  <div class="tile tile-flush sec-rail">
+    <span class="eyebrow shrink-0">Sections <span id="files-count" class="ml-1">—</span></span>
+    <div id="files-list" class="sec-scroll scroll-thin"></div>
+    <div id="add-box" class="flex items-center gap-1.5 shrink-0" hidden>
+      <input id="new-file-title" type="text" placeholder="e.g. Conclusions"
+             class="field" style="width: 190px; padding: 5px 9px; font-size: 12px;">
+      <button onclick="addFile()" class="toolbar-btn btn-signal">Add</button>
+    </div>
+    <button id="add-btn" onclick="toggleAdd()" class="toolbar-btn icon-btn shrink-0" title="Add a section">
+      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v14M5 12h14"/></svg>
+    </button>
+  </div>
+
+  <!-- ── Editor + drawer ────────────────────────────────────────────────── -->
+  <div class="ws-body">
+
+    <section class="tile tile-flush ws-editor">
+      <div class="px-3 py-2 border-b flex items-center gap-1.5 gap-y-2 flex-wrap relative"
+           style="border-color: var(--line)" id="toolbar">
+        <input id="editor-title" type="text" placeholder="Section title"
+               class="bg-transparent text-[13px] font-semibold outline-none min-w-0"
+               style="color: var(--ink); width: 150px; max-width: 24%;">
+        <select id="section-select" onchange="onSectionChange()" title="Which section of a paper this is — drives Draft, Revise and Audit"
+                class="field" style="width: auto; min-width: 104px; padding: 4px 6px; font-size: 11.5px;">
+          <option value="">auto-detect</option>
+        </select>
+
+        <span class="tb-rule"></span>
+
+        <div class="tb-group">
+        <button onclick="openPicker('cite')" class="toolbar-btn" title="Insert a citation to a paper in your library">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+          <span class="btn-label">Cite</span>
+        </button>
+        <button onclick="openPicker('link')" class="toolbar-btn" title="Insert a link to another section in this manuscript">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
+          <span class="btn-label">Link</span>
+        </button>
+        <button onclick="insertMath(false)" class="toolbar-btn" title="Insert inline LaTeX math">
+          <span aria-hidden="true" style="font-family:Georgia,serif;font-style:italic">∑</span><span class="btn-label">Math</span>
+        </button>
+        <button onclick="openDrawer('layout')" class="toolbar-btn" title="Upload or insert a figure">
+          <span aria-hidden="true">▧</span><span class="btn-label">Figure</span>
+        </button>
+        </div>
+
+        <span class="tb-rule"></span>
+
+        <div class="tb-group">
+        <button onclick="aiDraft()" id="ai-draft-btn" class="toolbar-btn" title="Draft new prose for this section against the writing standard">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+          <span class="btn-label">Draft</span>
+        </button>
+        <button onclick="aiRevise()" id="ai-revise-btn" class="toolbar-btn" title="Rewrite the selected text (or the whole file) to the writing standard — facts and numbers preserved">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+          <span class="btn-label">Revise</span>
+        </button>
+        <button onclick="runAudit()" id="audit-btn" class="toolbar-btn" title="Score this section against the measured corpus profile">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"/></svg>
+          <span class="btn-label">Audit</span>
+        </button>
+        </div>
+
+        <div class="flex-1 min-w-0"></div>
+
+        <div class="tb-group">
+        <span id="preview-words" class="font-mono text-[10px]" style="color: var(--ink-faint)">—</span>
+        <span id="save-status" class="text-[10px]" style="color: var(--ink-faint)">—</span>
+        </div>
+        <button onclick="saveCurrent()" class="toolbar-btn btn-signal" title="Save (⌘S)">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-5 4l5-5m-5 5L14 4"/></svg>
+          <span class="btn-label">Save</span>
+        </button>
+
+        <span class="tb-rule"></span>
+
+        <div class="tb-group">
+        <button id="wide-btn" onclick="toggleWide()" class="toolbar-btn icon-btn" title="Column width — centred measure or edge to edge">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6v12M20 6v12M8 12h8m0 0l-2.5-2.5M16 12l-2.5 2.5"/></svg>
+        </button>
+        <button id="panels-btn" onclick="toggleDrawer()" class="toolbar-btn icon-btn" title="Side panels — preview, writing standard, references, journal fit (⌥P)">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2" stroke-width="2"/><path stroke-width="2" d="M15 4v16"/></svg>
+        </button>
+        <button id="focus-btn" onclick="toggleFocus()" class="toolbar-btn icon-btn" title="Focus mode — fold away the app chrome (⌥F)">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 9V5a1 1 0 011-1h4M20 9V5a1 1 0 00-1-1h-4M4 15v4a1 1 0 001 1h4m11-5v4a1 1 0 01-1 1h-4"/></svg>
+        </button>
+        </div>
+      </div>
+
+      <div id="editor-wrap"><div id="editor-host"><div id="editor"></div></div></div>
+    </section>
+
+    <div id="ws-resize" class="ws-resize" title="Drag to resize" hidden></div>
+
+    <!-- ── Drawer ───────────────────────────────────────────────────────── -->
+    <aside id="drawer" class="tile tile-flush ws-drawer" hidden>
+      <div class="drawer-tabs">
+        <button class="drawer-tab" data-panel="preview"  onclick="openDrawer('preview')">Preview</button>
+        <button class="drawer-tab" data-panel="standard" onclick="openDrawer('standard')">Standard</button>
+        <button class="drawer-tab" data-panel="refs"     onclick="openDrawer('refs')">Refs</button>
+        <button class="drawer-tab" data-panel="layout"   onclick="openDrawer('layout')">Page</button>
+        <button class="drawer-tab" data-panel="fit"      onclick="openDrawer('fit')">Fit</button>
+        <button class="drawer-tab" onclick="closeDrawer()" title="Close panels" style="flex:0 0 auto; padding: 5px 8px;">✕</button>
+      </div>
+
+      <!-- Preview -->
+      <div id="dp-preview" class="drawer-panel scroll-thin" hidden>
+        <article id="preview-paper" class="paper-preview manuscript"><div id="preview" class="md-body"></div></article>
+      </div>
+
+      <!-- Writing standard -->
+      <div id="dp-standard" class="drawer-panel scroll-thin" hidden>
+        <div class="drawer-sub">
+          <span class="eyebrow flex-1">Writing standard</span>
+          <span id="skill-badge" class="font-mono text-[10px]" style="color: var(--ink-faint)">—</span>
+        </div>
+        <div id="audit-out" class="px-4 py-3 text-xs" style="color: var(--ink-muted)">
+          Run an audit to score this section against ~76,000 words of published prose in the field.
+        </div>
+      </div>
+
+      <!-- References & links -->
+      <div id="dp-refs" class="drawer-panel scroll-thin" hidden>
+        <div class="p-4 space-y-3.5">
+          <div>
+            <div class="eyebrow mb-1.5">Cited in this section</div>
+            <div id="panel-cites" class="space-y-1.5 text-xs" style="color: var(--ink-muted)">—</div>
+          </div>
+          <div>
+            <div class="eyebrow mb-1.5">Linked sections</div>
+            <div id="panel-links" class="flex flex-wrap gap-1.5">—</div>
+          </div>
+          <div>
+            <div class="eyebrow mb-1.5">Referenced by</div>
+            <div id="panel-backlinks" class="flex flex-wrap gap-1.5">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Page layout and figures -->
+      <div id="dp-layout" class="drawer-panel scroll-thin" hidden>
+        <div class="p-4 space-y-4">
+          <div>
+            <div class="eyebrow mb-1.5">Page style</div>
+            <select id="page-style" class="field" onchange="applyLayoutField('page_style', this.value)">
+              <option value="manuscript">Manuscript</option><option value="blank">Blank</option>
+              <option value="lined">Fully lined</option><option value="grid">Grid</option>
+              <option value="dot">Dot grid</option><option value="tinted">Tinted notes</option>
+            </select>
+          </div>
+          <div class="layout-grid">
+            <label><span>Paper</span><select id="layout-page-size" class="field" onchange="applyLayoutField('page_size', this.value)"><option value="letter">Letter</option><option value="a4">A4</option></select></label>
+            <label><span>Font</span><select id="layout-font-family" class="field" onchange="applyLayoutField('font_family', this.value)"><option value="serif">Serif</option><option value="sans">Sans</option><option value="mono">Mono</option></select></label>
+            <label><span>Top (mm)</span><input id="layout-margin-top" class="field" type="number" min="0" max="80" onchange="applyLayoutField('margin_top', this.value)"></label>
+            <label><span>Right (mm)</span><input id="layout-margin-right" class="field" type="number" min="0" max="80" onchange="applyLayoutField('margin_right', this.value)"></label>
+            <label><span>Bottom (mm)</span><input id="layout-margin-bottom" class="field" type="number" min="0" max="80" onchange="applyLayoutField('margin_bottom', this.value)"></label>
+            <label><span>Left (mm)</span><input id="layout-margin-left" class="field" type="number" min="0" max="80" onchange="applyLayoutField('margin_left', this.value)"></label>
+            <label><span>Text size</span><input id="layout-font-size" class="field" type="number" min="9" max="28" step=".5" onchange="applyLayoutField('font_size', this.value)"></label>
+            <label><span>Line height</span><input id="layout-line-height" class="field" type="number" min="1" max="3" step=".05" onchange="applyLayoutField('line_height', this.value)"></label>
+            <label><span>Measure (ch)</span><input id="layout-measure" class="field" type="number" min="45" max="130" onchange="applyLayoutField('measure', this.value)"></label>
+            <label><span>Page color</span><input id="layout-page-color" class="field" type="color" onchange="applyLayoutField('page_color', this.value)"></label>
+          </div>
+          <div class="flex items-center gap-2">
+            <button class="toolbar-btn" onclick="resetFileLayout()">Reset section</button>
+            <button class="toolbar-btn" onclick="exportHtml()">Print / HTML</button>
+          </div>
+          <div style="border-top:1px solid var(--line); padding-top:12px">
+            <div class="eyebrow mb-1.5">Figures & images</div>
+            <input id="asset-upload" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" multiple hidden onchange="uploadAssets(this.files)">
+            <button class="toolbar-btn btn-signal" onclick="document.getElementById('asset-upload').click()">Upload images</button>
+            <div id="asset-list" class="asset-list mt-2"><span class="text-xs" style="color:var(--ink-faint)">No images yet.</span></div>
+            <div class="text-[10.5px] leading-relaxed mt-2" style="color:var(--ink-faint)">Click an image to insert standard Markdown at the cursor. Dragging or pasting images into the editor does the same.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Journal fit -->
+      <div id="dp-fit" class="drawer-panel scroll-thin" hidden>
+        <div class="p-4 space-y-3">
+          <div class="flex items-center justify-between">
+            <span class="eyebrow">Journal fit</span>
+            <span id="jfr-badge" class="text-[10px] font-mono" style="color: var(--ink-faint)">not linked</span>
+          </div>
+          <div>
+            <label class="eyebrow block mb-1">Principal claim</label>
+            <textarea id="jfr-claim" rows="3" placeholder="One declarative sentence: what this paper proves."
+                      class="field resize-y" style="font-size: 12px;"></textarea>
+          </div>
+          <div>
+            <label class="eyebrow block mb-1">Techniques <span class="normal-case">(comma-separated)</span></label>
+            <input id="jfr-techniques" type="text" placeholder="e.g. NTA, zeta potential, MD simulation"
+                   class="field" style="font-size: 12px;">
+          </div>
+          <p class="text-[10.5px] leading-relaxed" style="color: var(--ink-faint)">
+            Pushing to JFR uses the project title, the <span class="font-mono">abstract</span> section
+            (or the first section), and these fields. Save claim and techniques before pushing.
+          </p>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<!-- CodeMirror 5 — modes and addons the page actually uses. The previous list
+     pointed at mode/overlay (it lives under addon/) and omitted gfm, so the
+     editor fell back to plain text with no placeholder. -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/mode/overlay.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/xml/xml.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/markdown/markdown.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/gfm/gfm.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/display/placeholder.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/continuelist.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/comment/comment.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/selection/active-line.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/show-hint.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/show-hint.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.6/dist/purify.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked-katex-extension@5/lib/index.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
+<script>
+const PROJECT_ID = "{{ project_id }}";
+let project = null;
+let currentFile = null;    // slug
+let fileData = null;       // {slug, title, content, word_count, cites, links, backlinks}
+let citeMap = {};          // paper_id and citation_key -> {n, title, authors, year, doi}
+let assets = [];
+let dirty = false;
+let saving = false;
+let autosaveTimer = null;
+let cm = null;
+let pickerOpen = null;
+
+marked.use({ gfm: true, breaks: false });
+if (window.markedKatex) { try { marked.use(markedKatex({ throwOnError: false, nonStandard: true })); } catch (e) {} }
+
+function escapeHtml(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function fileTitle(slug) { const f = (project?.files || []).find(x => x.slug === slug); return f ? f.title : slug; }
+function lsGet(k, d) { try { return localStorage.getItem(k) ?? d; } catch (e) { return d; } }
+function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+
+// ── Layout ───────────────────────────────────────────────────────────────────
+// The editor claims whatever vertical space the chrome above it leaves. That
+// height cannot be expressed in CSS because the page header is sticky and its
+// height varies with focus mode, so it is measured against the scroll container.
+function fitWorkspace() {
+  const ws = document.getElementById('ws');
+  const main = document.querySelector('main');
+  if (!ws || !main) return;
+  const top = ws.getBoundingClientRect().top - main.getBoundingClientRect().top + main.scrollTop;
+  const h = Math.max(440, Math.round(main.clientHeight - top - 40));
+  if (ws.dataset.h !== String(h)) {
+    ws.dataset.h = String(h);
+    ws.style.setProperty('--ws-h', h + 'px');
+  }
+  if (cm) cm.refresh();
+}
+
+const DRAWER_KEY = 'labui-write-panel';
+const WIDTH_KEY  = 'labui-write-panel-w';
+const FOCUS_KEY  = 'labui-write-focus';
+const WIDE_KEY   = 'labui-write-wide';
+const PANELS = ['preview', 'standard', 'refs', 'layout', 'fit'];
+let drawer = null;         // null when closed, otherwise the open panel id
+
+function openDrawer(name) {
+  if (!PANELS.includes(name)) name = 'preview';
+  drawer = name;
+  document.getElementById('drawer').hidden = false;
+  document.getElementById('ws-resize').hidden = false;
+  document.getElementById('panels-btn').classList.add('on');
+  PANELS.forEach(p => { document.getElementById('dp-' + p).hidden = (p !== name); });
+  document.querySelectorAll('.drawer-tab[data-panel]').forEach(t =>
+    t.classList.toggle('active', t.dataset.panel === name));
+  lsSet(DRAWER_KEY, name);
+  if (name === 'preview') updatePreview(true);
+  if (cm) cm.refresh();
+}
+
+function closeDrawer() {
+  drawer = null;
+  document.getElementById('drawer').hidden = true;
+  document.getElementById('ws-resize').hidden = true;
+  document.getElementById('panels-btn').classList.remove('on');
+  lsSet(DRAWER_KEY, '');
+  if (cm) cm.refresh();
+}
+
+function toggleDrawer(name) {
+  if (name) { if (drawer === name) closeDrawer(); else openDrawer(name); return; }
+  if (drawer) closeDrawer();
+  else openDrawer(lsGet(DRAWER_KEY, '') || 'preview');
+}
+
+function toggleFocus(force) {
+  const on = force === undefined ? !document.body.classList.contains('ws-focus') : !!force;
+  document.body.classList.toggle('ws-focus', on);
+  document.getElementById('focus-btn').classList.toggle('on', on);
+  lsSet(FOCUS_KEY, on ? '1' : '');
+  setTimeout(fitWorkspace, 320);
+}
+
+function toggleWide(force) {
+  const ws = document.getElementById('ws');
+  const on = force === undefined ? !ws.classList.contains('wide') : !!force;
+  ws.classList.toggle('wide', on);
+  document.getElementById('wide-btn').classList.toggle('on', on);
+  lsSet(WIDE_KEY, on ? '1' : '');
+  if (cm) cm.refresh();
+}
+
+// Drag the divider; the editor keeps whatever is left.
+function initResizer() {
+  const el = document.getElementById('ws-resize');
+  const ws = document.getElementById('ws');
+  let startX = 0, startW = 0, active = false;
+  el.addEventListener('pointerdown', e => {
+    active = true; startX = e.clientX;
+    startW = document.getElementById('drawer').getBoundingClientRect().width;
+    el.setPointerCapture(e.pointerId); el.classList.add('dragging'); e.preventDefault();
+  });
+  el.addEventListener('pointermove', e => {
+    if (!active) return;
+    const max = Math.max(320, Math.round(ws.getBoundingClientRect().width * 0.6));
+    const w = Math.min(max, Math.max(280, Math.round(startW - (e.clientX - startX))));
+    ws.style.setProperty('--drawer-w', w + 'px');
+  });
+  const end = () => {
+    if (!active) return;
+    active = false; el.classList.remove('dragging');
+    lsSet(WIDTH_KEY, (ws.style.getPropertyValue('--drawer-w') || '').trim());
+    if (cm) cm.refresh();
+  };
+  el.addEventListener('pointerup', end);
+  el.addEventListener('pointercancel', end);
+}
+
+function restoreLayout() {
+  const ws = document.getElementById('ws');
+  const w = lsGet(WIDTH_KEY, '');
+  if (w) ws.style.setProperty('--drawer-w', w);
+  if (lsGet(WIDE_KEY, '')) toggleWide(true);
+  if (lsGet(FOCUS_KEY, '')) toggleFocus(true);
+  const p = lsGet(DRAWER_KEY, '');
+  if (p) openDrawer(p);
+}
+
+// ── Loading ──────────────────────────────────────────────────────────────────
+async function loadProject() {
+  const r = await fetch('/api/rag/projects/' + encodeURIComponent(PROJECT_ID));
+  if (!r.ok) throw new Error((await r.json()).detail || 'HTTP ' + r.status);
+  project = await r.json();
+  document.getElementById('project-title').value = project.title || '';
+  document.title = (project.title || 'Untitled') + ' — Write';
+  document.getElementById('jfr-claim').value = project.principal_claim || '';
+  document.getElementById('jfr-techniques').value = project.techniques || '';
+  setJfrBadge(project.jfr_manuscript_id);
+  await loadAssets();
+  renderFilesPane();
+  const cr = await fetch(`/api/rag/projects/${encodeURIComponent(PROJECT_ID)}/citations`);
+  const cd = await cr.json();
+  citeMap = {};
+  (cd.citations || []).forEach(c => { citeMap[c.paper_id] = c; if (c.citation_key) citeMap[c.citation_key] = c; });
+  const files = project.files || [];
+  const keep = currentFile && files.some(f => f.slug === currentFile) ? currentFile : files[0] && files[0].slug;
+  if (keep) await selectFile(keep);
+  else {
+    document.getElementById('preview').innerHTML = '<div class="text-xs" style="color: var(--ink-faint)">No sections yet — add one from the rail above.</div>';
+    document.getElementById('panel-cites').textContent = '—';
+  }
+}
+
+async function loadAssets() {
+  try {
+    const r = await fetch(`/api/rag/projects/${encodeURIComponent(PROJECT_ID)}/assets`);
+    const d = await r.json();
+    assets = d.assets || [];
+  } catch (e) { assets = []; }
+  renderAssets();
+}
+
+function renderAssets() {
+  const box = document.getElementById('asset-list');
+  if (!box) return;
+  box.innerHTML = assets.length ? assets.map(a =>
+    `<button class="asset-chip" title="Insert ${escapeHtml(a.original_name)}" onclick="insertAsset('${escapeHtml(a.id)}')">🖼 ${escapeHtml(a.original_name)}</button>`
+  ).join('') : '<span class="text-xs" style="color:var(--ink-faint)">No images yet.</span>';
+}
+
+async function uploadAssets(files) {
+  for (const file of Array.from(files || [])) {
+    const fd = new FormData(); fd.append('file', file);
+    try {
+      const r = await fetch(`/api/rag/projects/${encodeURIComponent(PROJECT_ID)}/assets`, {method:'POST', body:fd});
+      if (!r.ok) throw new Error((await r.json()).detail || 'upload failed');
+      const asset = await r.json(); assets.unshift(asset); insertAsset(asset.id);
+    } catch (e) { alert('Image upload failed: ' + e.message); }
+  }
+  renderAssets();
+  const input = document.getElementById('asset-upload'); if (input) input.value = '';
+}
+
+function initImageDrop() {
+  const target = document.getElementById('editor-wrap'); if (!target) return;
+  target.addEventListener('dragover', e => { if ([...(e.dataTransfer?.items || [])].some(i => i.kind === 'file')) { e.preventDefault(); target.classList.add('image-drag'); } });
+  target.addEventListener('dragleave', () => target.classList.remove('image-drag'));
+  target.addEventListener('drop', e => {
+    target.classList.remove('image-drag');
+    const files = [...(e.dataTransfer?.files || [])].filter(f => f.type.startsWith('image/'));
+    if (files.length) { e.preventDefault(); uploadAssets(files); }
+  });
+  target.addEventListener('paste', e => {
+    const files = [...(e.clipboardData?.items || [])].filter(i => i.kind === 'file').map(i => i.getAsFile()).filter(Boolean);
+    if (files.length) { e.preventDefault(); uploadAssets(files); }
+  });
+}
+
+function insertAsset(assetId) {
+  const a = assets.find(x => x.id === assetId); if (!a || !cm) return;
+  const label = (a.original_name || 'Figure').replace(/\.[^.]+$/, '').replace(/[\[\]]/g, ' ');
+  const text = `![${label}](${a.url})`;
+  cm.replaceSelection(text);
+  cm.focus();
+  dirty = true; updatePreview(); setStatus('Unsaved changes…');
+}
+
+function insertMath(display) {
+  if (!cm) return;
+  const example = display ? '\\frac{a}{b}' : 'E = mc^2';
+  const value = prompt(display ? 'LaTeX display expression:' : 'Inline LaTeX expression:', example);
+  if (value == null) return;
+  cm.replaceSelection(display ? `\n$$${value}$$\n` : `$${value}$`);
+  cm.focus(); dirty = true; updatePreview(); setStatus('Unsaved changes…');
+}
+
+function setJfrBadge(msId) {
+  const b = document.getElementById('jfr-badge');
+  const lbl = document.getElementById('push-jfr-label');
+  if (msId) { b.textContent = msId; b.className = 'text-[10px] font-mono'; b.style.color = 'var(--data)'; lbl.textContent = 'Update JFR'; }
+  else { b.textContent = 'not linked'; b.className = 'text-[10px] font-mono'; b.style.color = 'var(--ink-faint)'; lbl.textContent = 'Push to JFR'; }
+}
+
+function renderFilesPane() {
+  const list = document.getElementById('files-list');
+  const files = project.files || [];
+  document.getElementById('files-count').textContent = files.length;
+  list.innerHTML = files.map((f, i) => `
+    <div class="sec-tab ${f.slug === currentFile ? 'active' : ''}" title="${escapeHtml(f.title)}"
+         onclick="selectFile('${escapeHtml(f.slug)}')">
+      <span class="sec-n">${i + 1}</span>
+      <span class="sec-t">${escapeHtml(f.title)}</span>
+      <span class="sec-ctl">
+        <button title="Move left"  onclick="event.stopPropagation(); reorder(${i}, -1)">←</button>
+        <button title="Move right" onclick="event.stopPropagation(); reorder(${i}, 1)">→</button>
+        <button title="Delete section" class="sec-del" onclick="event.stopPropagation(); deleteFile('${escapeHtml(f.slug)}')">✕</button>
+      </span>
+    </div>`).join('')
+    || '<span class="text-xs" style="color: var(--ink-faint)">No sections yet — add the first one with +</span>';
+  const act = list.querySelector('.sec-tab.active');
+  if (act) act.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+}
+
+function stepSection(delta) {
+  const files = (project && project.files) || [];
+  if (!files.length) return;
+  const at = files.findIndex(f => f.slug === currentFile);
+  const next = at < 0 ? 0 : at + delta;
+  if (next < 0 || next >= files.length) return;
+  selectFile(files[next].slug);
+}
+
+function toggleAdd(show) {
+  const box = document.getElementById('add-box');
+  const on = show === undefined ? box.hasAttribute('hidden') : !!show;
+  if (on) { box.removeAttribute('hidden'); document.getElementById('new-file-title').focus(); }
+  else { box.setAttribute('hidden', ''); document.getElementById('new-file-title').value = ''; }
+  document.getElementById('add-btn').classList.toggle('on', on);
+}
+
+// ── Editor ───────────────────────────────────────────────────────────────────
+function initEditor() {
+  const hasGfm = !!(window.CodeMirror && CodeMirror.modes && CodeMirror.modes.gfm);
+  cm = CodeMirror(document.getElementById('editor'), {
+    value: '',
+    mode: hasGfm ? { name: 'gfm', highlightFormatting: true, emptyBlockTags: true }
+                 : { name: 'markdown', highlightFormatting: true },
+    lineNumbers: false,       // prose, not code — the gutter only narrows the measure
+    lineWrapping: true,
+    styleActiveLine: { nonEmpty: true },
+    placeholder: 'Write markdown… Use Cite to insert @paper citations, and Link for [[cross-references]].',
+    extraKeys: {
+      'Cmd-S': () => saveCurrent(),
+      'Ctrl-S': () => saveCurrent(),
+      'Cmd-/': cm => { if (cm.toggleComment) cm.toggleComment(); },
+      'Ctrl-/': cm => { if (cm.toggleComment) cm.toggleComment(); },
+      'Enter': 'newlineAndIndentContinueMarkdownList',
+      'Alt-Up': () => stepSection(-1),
+      'Alt-Down': () => stepSection(1),
+      'Alt-P': () => toggleDrawer(),
+      'Alt-F': () => toggleFocus(),
+    },
+  });
+  cm.on('change', () => {
+    dirty = true;
+    updatePreview();
+    clearTimeout(autosaveTimer);
+    autosaveTimer = setTimeout(() => saveCurrent(true), 2500);
+    setStatus('Unsaved changes…');
+  });
+  cm.on('inputRead', (editor, change) => {
+    if (!change || !change.text || !change.text.join('').match(/[A-Za-z0-9_\-@]/)) return;
+    const cur = editor.getCursor();
+    const line = editor.getLine(cur.line).slice(0, cur.ch);
+    const m = line.match(/(^|[^\w.\-])@([A-Za-z0-9_\-]*)$/);
+    if (!m || m[2].length < 2 || !window.CodeMirror.showHint) return;
+    const query = m[2];
+    fetch('/api/rag/citations/autocomplete?q=' + encodeURIComponent(query) + '&limit=12')
+      .then(r => r.ok ? r.json() : {citations: []})
+      .then(d => {
+        const items = (d.citations || []).map(p => ({
+          text: '@' + (p.citation_key || p.key || p.paper_id),
+          displayText: (p.citation_key || p.key || p.paper_id) + ' — ' + (p.title || 'Untitled'),
+        }));
+        if (!items.length || editor.getCursor().line !== cur.line) return;
+        // Replace the complete trigger, including the leading @, so selecting
+        // a result never produces ``@@key``.
+        const from = CodeMirror.Pos(cur.line, cur.ch - query.length - 1);
+        editor.showHint(() => ({list: items, from, to: cur}), {completeSingle: false, closeOnUnfocus: true});
+      }).catch(() => {});
+  });
+  applyEditorTheme();
+  watchTheme();
+}
+
+// Token colours come from CSS custom properties, so the editor follows the app
+// theme without swapping a CodeMirror theme sheet. All this needs to do is
+// re-measure after the surrounding colours change.
+function applyEditorTheme() { if (cm) cm.refresh(); }
+function watchTheme() {
+  const obs = new MutationObserver(applyEditorTheme);
+  obs.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+}
+
+function setEditorContent(text) {
+  cm.setValue(text || '');
+  dirty = false;
+  setStatus('Saved');
+  updatePreview();
+}
+
+const LAYOUT_NUMERIC = new Set(['margin_top','margin_right','margin_bottom','margin_left','font_size','line_height','measure']);
+function effectiveLayout() {
+  const base = Object.assign({page_size:'letter', margin_top:22, margin_right:22, margin_bottom:22, margin_left:22,
+    font_size:14, line_height:1.72, measure:86, font_family:'serif', page_style:'manuscript', page_color:'#fffdf8'}, project?.settings || {});
+  const local = (fileData && fileData.layout) || {};
+  return Object.assign(base, local, {page_style: (fileData && fileData.page_style) || base.page_style || 'manuscript'});
+}
+
+function syncLayoutControls() {
+  const l = effectiveLayout();
+  const map = {'page-style':'page_style','layout-page-size':'page_size','layout-font-family':'font_family',
+    'layout-margin-top':'margin_top','layout-margin-right':'margin_right','layout-margin-bottom':'margin_bottom',
+    'layout-margin-left':'margin_left','layout-font-size':'font_size','layout-line-height':'line_height',
+    'layout-measure':'measure','layout-page-color':'page_color'};
+  for (const [id,key] of Object.entries(map)) { const el = document.getElementById(id); if (el) el.value = l[key]; }
+  applyPreviewLayout(l);
+}
+
+function applyPreviewLayout(l) {
+  const paper = document.getElementById('preview-paper'); if (!paper) return;
+  paper.className = 'paper-preview ' + (l.page_style || 'manuscript');
+  paper.style.setProperty('--paper-bg', l.page_color || 'var(--raised)');
+  paper.style.setProperty('--paper-fs', (Number(l.font_size) || 14) + 'px');
+  paper.style.setProperty('--paper-lh', Number(l.line_height) || 1.72);
+  paper.style.setProperty('--paper-mt', (Number(l.margin_top) || 22) + 'mm');
+  paper.style.setProperty('--paper-mr', (Number(l.margin_right) || 22) + 'mm');
+  paper.style.setProperty('--paper-mb', (Number(l.margin_bottom) || 22) + 'mm');
+  paper.style.setProperty('--paper-ml', (Number(l.margin_left) || 22) + 'mm');
+  paper.style.fontFamily = l.font_family === 'sans' ? 'Public Sans, sans-serif' : (l.font_family === 'mono' ? 'JetBrains Mono, monospace' : 'Georgia, serif');
+  const host = document.getElementById('editor-host');
+  if (host) host.style.setProperty('--measure', (Number(l.measure) || 86) + 'ch');
+}
+
+async function applyLayoutField(key, value) {
+  if (!fileData || !currentFile) return;
+  const layout = Object.assign({}, fileData.layout || {});
+  if (key === 'page_style') fileData.page_style = value;
+  else layout[key] = LAYOUT_NUMERIC.has(key) ? Number(value) : value;
+  fileData.layout = layout;
+  syncLayoutControls(); updatePreview();
+  try {
+    const r = await fetch(`/api/rag/projects/${encodeURIComponent(PROJECT_ID)}/files/${encodeURIComponent(currentFile)}`, {
+      method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({page_style:fileData.page_style, layout})
+    });
+    if (!r.ok) throw new Error((await r.json()).detail || 'save failed');
+    fileData = await r.json(); setStatus('Layout saved');
+  } catch (e) { setStatus('Layout save failed: ' + e.message); }
+}
+
+async function resetFileLayout() {
+  if (!fileData || !currentFile) return;
+  await applyLayoutField('page_style', 'manuscript');
+  fileData.layout = {};
+  try {
+    const r = await fetch(`/api/rag/projects/${encodeURIComponent(PROJECT_ID)}/files/${encodeURIComponent(currentFile)}`, {
+      method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({page_style:'manuscript', layout:{}})
+    });
+    if (r.ok) fileData = await r.json();
+  } catch (e) {}
+  syncLayoutControls(); updatePreview();
+}
+
+async function selectFile(slug) {
+  closePicker();
+  if (slug === currentFile) return;
+  if (dirty) { const ok = await saveCurrent(true); if (!ok) return; }
+  try {
+    const r = await fetch(`/api/rag/projects/${encodeURIComponent(PROJECT_ID)}/files/${encodeURIComponent(slug)}`);
+    if (!r.ok) throw new Error((await r.json()).detail || 'HTTP ' + r.status);
+    fileData = await r.json();
+    currentFile = slug;
+    document.getElementById('editor-title').value = fileData.title || '';
+    setEditorContent(fileData.content);
+    renderFilesPane();
+    updateLinksPanel();
+    updatePreview();
+    syncLayoutControls();
+    // The audit belongs to the file that was open; drop it and re-guess the section.
+    lastAudit = null;
+    const secSel = document.getElementById('section-select');
+    if (secSel) secSel.value = '';
+    guessSectionFromFile();
+    const auditOut = document.getElementById('audit-out');
+    if (auditOut) auditOut.innerHTML =
+      'Run an audit to score this section against ~76,000 words of published prose in the field.';
+    cm.focus();
+  } catch (e) {
+    setStatus('Load failed: ' + e.message);
+  }
+}
+
+async function saveCurrent(silent) {
+  if (!currentFile || saving) return !dirty;
+  if (!dirty && !silent) { setStatus('Saved'); return true; }
+  saving = true;
+  setStatus('Saving…');
+  try {
+    const r = await fetch(`/api/rag/projects/${encodeURIComponent(PROJECT_ID)}/files/${encodeURIComponent(currentFile)}`, {
+      method: 'PUT', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({content: cm.getValue()})
+    });
+    if (!r.ok) throw new Error((await r.json()).detail || 'HTTP ' + r.status);
+    fileData = await r.json();
+    dirty = false;
+    setStatus('Saved ' + new Date().toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}));
+    updateLinksPanel();
+    return true;
+  } catch (e) {
+    setStatus('Save failed: ' + e.message);
+    return false;
+  } finally { saving = false; }
+}
+
+function setStatus(t) {
+  const el = document.getElementById('save-status');
+  el.textContent = t;
+  el.title = t;
+  el.style.color = /failed/i.test(t) ? 'var(--danger)' : 'var(--ink-faint)';
+}
+
+// ── Preview (markdown + citations + wikilinks + references) ─────────────────
+function renderCitations(text) {
+  // Replace @paper-id tokens with [n] chips using the project-wide numbering.
+  let out = text;
+  const rendered = new Set();
+  for (const [pid, c] of Object.entries(citeMap)) {
+    const token = c.citation_key || pid;
+    if (rendered.has(String(c.n) + ':' + token)) continue;
+    rendered.add(String(c.n) + ':' + token);
+    const title = escapeHtml(c.title || token).replace(/"/g, '&quot;');
+    const chip = `<span class="cite-chip" data-paper-id="${escapeHtml(c.paper_id || pid)}" title="[${c.n}] ${title}">[${c.n}]</span>`;
+    out = out.split('@' + token).join(chip);
+    if (c.paper_id && c.paper_id !== token) out = out.split('@' + c.paper_id).join(chip);
+  }
+  return out;
+}
+
+function renderWikilinks(text) {
+  return text
+    .replace(/\[\[\s*([A-Za-z0-9_\-]+)(?:\s*\|\s*([^\[\]]+?))?\s*\]\]/g, (m, slug, label) => {
+      if (!(project?.files || []).some(f => f.slug === slug)) {
+        return `<span style="color: var(--danger)" title="No section named '${slug}' in this project">${escapeHtml(m)}</span>`;
+      }
+        return `<a href="#" class="wikilink" data-section-slug="${escapeHtml(slug)}">${escapeHtml(label || slug)}</a>`;
+    })
+    .replace(/\[([^\]]+)\]\(([\w\-]+)\.md\)/g, (m, label, slug) => {
+      if (!(project?.files || []).some(f => f.slug === slug)) return m;
+      return `<a href="#" class="wikilink" data-section-slug="${escapeHtml(slug)}">${escapeHtml(label)}</a>`;
+    });
+}
+
+function enhanceFigures(html) {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  doc.querySelectorAll('p > img:only-child').forEach(img => {
+    const p = img.parentElement; const fig = doc.createElement('figure');
+    const caption = img.getAttribute('alt') || '';
+    fig.appendChild(img.cloneNode(true));
+    if (caption) { const cap = doc.createElement('figcaption'); cap.textContent = caption; fig.appendChild(cap); }
+    p.replaceWith(fig);
+  });
+  return doc.body.innerHTML;
+}
+
+function renderPageBreaks(html) {
+  return html.replace(/<!--\s*pagebreak\s*-->|\\pagebreak\b/gi, '<div class="page-break"></div>');
+}
+
+function bindPreviewLinks() {
+  const root = document.getElementById('preview'); if (!root) return;
+  root.querySelectorAll('[data-paper-id]').forEach(el => el.addEventListener('click', () =>
+    window.open('/research/paper/' + encodeURIComponent(el.dataset.paperId) + '/view', '_blank')));
+  root.querySelectorAll('[data-section-slug]').forEach(el => el.addEventListener('click', e => {
+    e.preventDefault(); selectFile(el.dataset.sectionSlug);
+  }));
+}
+
+// The word count is cheap and always shown; the markdown render is not, so it
+// only runs when the preview panel is actually on screen.
+function updatePreview(force) {
+  const src = cm ? cm.getValue() : '';
+  document.getElementById('preview-words').textContent = (src.match(/\S+/g) || []).length + 'w';
+  if (drawer !== 'preview' && !force) return;
+  let html = renderWikilinks(renderCitations(src));
+  try {
+    html = marked.parse(window.normalizeMath ? window.normalizeMath(html) : html);
+    html = renderPageBreaks(html);
+    html = enhanceFigures(html);
+    if (window.DOMPurify) html = DOMPurify.sanitize(html, {USE_PROFILES: {html: true}});
+  } catch (e) { html = `<pre>${escapeHtml(src)}</pre>`; }
+  const refs = Object.values(citeMap).sort((a, b) => a.n - b.n).map(c =>
+    `<li>[${c.n}] ${escapeHtml(c.title || c.paper_id)}${c.authors ? ' — ' + escapeHtml(c.authors) : ''}${c.year ? ', ' + c.year : ''}. ` +
+    (c.doi ? `<a class="ref-doi" href="https://doi.org/${encodeURIComponent(c.doi)}" target="_blank">doi:${escapeHtml(c.doi)}</a>` : '') + '</li>'
+  ).join('');
+  if (refs) html += `<h2>References</h2><ol class="ref-list">${refs}</ol>`;
+  document.getElementById('preview').innerHTML = html || '<div class="text-xs" style="color: var(--ink-faint)">Nothing to preview yet.</div>';
+  bindPreviewLinks();
+  applyPreviewLayout(effectiveLayout());
+}
+
+function updateLinksPanel() {
+  const citesEl = document.getElementById('panel-cites');
+  const linksEl = document.getElementById('panel-links');
+  const backEl = document.getElementById('panel-backlinks');
+  if (!fileData) { citesEl.textContent = '—'; return; }
+  const cited = (fileData.cites || []).map(pid => citeMap[pid]).filter(Boolean);
+  citesEl.innerHTML = cited.length
+    ? cited.map(c => `<div class="flex items-start gap-1.5"><span class="cite-chip shrink-0">[${c.n}]</span><span class="min-w-0"><span class="truncate block">${escapeHtml(c.title || c.paper_id)}</span><span class="text-[10px] truncate block" style="color: var(--ink-faint)">${escapeHtml((c.authors || '') + (c.year ? ', ' + c.year : ''))}</span></span></div>`).join('')
+    : '<span style="color: var(--ink-faint)">None yet — use the Cite button.</span>';
+  linksEl.innerHTML = (fileData.links || []).length
+    ? fileData.links.map(l => `<a href="#" onclick="selectFile('${l.slug}');return false" class="wikilink text-xs rounded-md px-2 py-1" style="background: var(--sunken)">${escapeHtml(l.label || l.slug)}</a>`).join('')
+    : '<span class="text-xs" style="color: var(--ink-faint)">None</span>';
+  backEl.innerHTML = (fileData.backlinks || []).length
+    ? fileData.backlinks.map(s => `<a href="#" onclick="selectFile('${s}');return false" class="wikilink text-xs rounded-md px-2 py-1" style="background: var(--sunken)">${escapeHtml(fileTitle(s))}</a>`).join('')
+    : '<span class="text-xs" style="color: var(--ink-faint)">None yet</span>';
+}
+
+// ── Pickers (cite / link) ────────────────────────────────────────────────────
+function closePicker() {
+  const el = document.getElementById('picker-pop');
+  if (el) el.remove();
+  pickerOpen = null;
+}
+
+function openPicker(kind) {
+  closePicker();
+  pickerOpen = kind;
+  const bar = document.getElementById('toolbar');
+  const pop = document.createElement('div');
+  pop.id = 'picker-pop';
+  pop.className = 'picker-pop';
+  pop.style.top = (bar.offsetHeight + 6) + 'px';
+  pop.style.left = '10px';
+  if (kind === 'cite') {
+    pop.innerHTML = `
+      <div class="p-2.5" style="border-bottom: 1px solid var(--line)">
+        <input id="cite-q" type="text" placeholder="Search your library — title, author, DOI…" class="field" style="font-size: 12px;">
+      </div>
+      <div id="cite-results" class="overflow-y-auto flex-1 text-xs" style="color: var(--ink)">
+        <div class="p-3" style="color: var(--ink-faint)">Type to search…</div>
+      </div>`;
+    bar.appendChild(pop);
+    const q = document.getElementById('cite-q');
+    let t = null;
+    q.addEventListener('input', () => {
+      clearTimeout(t);
+      t = setTimeout(() => citeSearch(q.value), 250);
+    });
+    q.addEventListener('keydown', async e => {
+      if (e.key === 'Enter') { const first = document.querySelector('#cite-results .picker-item'); if (first) first.click(); }
+      if (e.key === 'Escape') closePicker();
+    });
+    q.focus();
+    citeSearch('');
+  } else {
+    pop.innerHTML = `
+      <div class="px-3 py-2 eyebrow">Link to a section</div>
+      <div class="overflow-y-auto flex-1">
+        ${(project?.files || []).map(f => `<div class="picker-item" onclick="insertLink('${escapeHtml(f.slug)}')">${escapeHtml(f.title)}</div>`).join('') || '<div class="p-3" style="color: var(--ink-faint)">No other sections.</div>'}
+      </div>`;
+    bar.appendChild(pop);
+  }
+}
+
+async function citeSearch(q) {
+  const box = document.getElementById('cite-results');
+  if (!box) return;
+  try {
+    const r = await fetch('/api/rag/cite/search?q=' + encodeURIComponent(q) + '&limit=12');
+    const d = await r.json();
+    if (!d.papers.length) { box.innerHTML = `<div class="p-3" style="color: var(--ink-faint)">${q.trim() ? 'No matching papers.' : 'Type to search…'}</div>`; return; }
+    box.innerHTML = d.papers.map(p => `
+      <div class="picker-item" onclick="insertCite('${escapeHtml(p.citation_key || p.key || p.paper_id)}')">
+        <div class="font-medium truncate">${escapeHtml(p.title || p.paper_id)} <span class="font-mono" style="color:var(--signal)">@${escapeHtml(p.citation_key || p.key || p.paper_id)}</span></div>
+        <div class="text-[10px] truncate" style="color: var(--ink-faint)">${escapeHtml((p.authors || '') + (p.year ? ', ' + p.year : ''))}</div>
+      </div>`).join('');
+  } catch (e) { box.innerHTML = `<div class="p-3" style="color: var(--danger)">Search failed</div>`; }
+}
+
+function insertAtCursor(text) {
+  const cur = cm.getCursor();
+  const line = cm.getLine(cur.line);
+  const needsSpaceBefore = cur.ch > 0 && /[\w\.\-]/.test(line[cur.ch - 1]);
+  cm.replaceRange((needsSpaceBefore ? ' ' : '') + text, cur);
+  cm.focus();
+}
+
+function insertCite(pid) {
+  insertAtCursor('@' + pid);
+  closePicker();
+  // Refresh numbering (server computes the project-wide citation order).
+  fetch(`/api/rag/projects/${encodeURIComponent(PROJECT_ID)}/citations`)
+    .then(x => x.json()).then(d => {
+      citeMap = {}; (d.citations || []).forEach(c => { citeMap[c.paper_id] = c; if (c.citation_key) citeMap[c.citation_key] = c; });
+      updatePreview(); updateLinksPanel();
+    }).catch(() => {});
+}
+
+function insertLink(slug) {
+  insertAtCursor('[[' + slug + ']]');
+  closePicker();
+}
+
+// ── File management ──────────────────────────────────────────────────────────
+async function addFile() {
+  const title = document.getElementById('new-file-title').value.trim();
+  if (!title) return;
+  try {
+    const r = await fetch(`/api/rag/projects/${encodeURIComponent(PROJECT_ID)}/files`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({title})
+    });
+    if (!r.ok) throw new Error((await r.json()).detail || 'HTTP ' + r.status);
+    toggleAdd(false);
+    await loadProject();
+  } catch (e) { alert('Add failed: ' + e.message); }
+}
+
+async function deleteFile(slug) {
+  if (!confirm(`Delete section "${fileTitle(slug)}"?`)) return;
+  const r = await fetch(`/api/rag/projects/${encodeURIComponent(PROJECT_ID)}/files/${encodeURIComponent(slug)}`, {method: 'DELETE'});
+  if (!r.ok) { alert('Delete failed'); return; }
+  if (currentFile === slug) { currentFile = null; fileData = null; }
+  await loadProject();
+}
+
+async function reorder(i, delta) {
+  const slugs = project.files.map(f => f.slug);
+  const j = i + delta;
+  if (j < 0 || j >= slugs.length) return;
+  [slugs[i], slugs[j]] = [slugs[j], slugs[i]];
+  const r = await fetch(`/api/rag/projects/${encodeURIComponent(PROJECT_ID)}/files/order`, {
+    method: 'PUT', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({slugs})
+  });
+  if (!r.ok) { alert('Reorder failed'); return; }
+  await loadProject();
+}
+
+// ── Project management ──────────────────────────────────────────────────────
+async function saveProjectFields() {
+  const title = document.getElementById('project-title').value.trim();
+  const claim = document.getElementById('jfr-claim').value.trim();
+  const techniques = document.getElementById('jfr-techniques').value.trim();
+  const body = {};
+  if (project && (title !== (project.title || ''))) body.title = title;
+  body.principal_claim = claim;
+  body.techniques = techniques;
+  const r = await fetch(`/api/rag/projects/${encodeURIComponent(PROJECT_ID)}`, {
+    method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)
+  });
+  if (r.ok) {
+    const p = await r.json();
+    Object.assign(project, p);
+    document.title = (p.title || 'Untitled') + ' — Write';
+  }
+}
+
+async function saveFileTitle() {
+  if (!currentFile) return;
+  const title = document.getElementById('editor-title').value.trim();
+  if (!title || (fileData && title === fileData.title)) return;
+  const r = await fetch(`/api/rag/projects/${encodeURIComponent(PROJECT_ID)}/files/${encodeURIComponent(currentFile)}`, {
+    method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({title})
+  });
+  if (r.ok) {
+    fileData = await r.json();
+    const f = (project.files || []).find(x => x.slug === currentFile);
+    if (f) { f.title = fileData.title; renderFilesPane(); }
+  }
+}
+
+async function pushJfr() {
+  await saveProjectFields();
+  const btn = document.getElementById('push-jfr-btn');
+  btn.disabled = true;
+  try {
+    const r = await fetch(`/api/rag/projects/${encodeURIComponent(PROJECT_ID)}/push-jfr`, {method: 'POST'});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || 'HTTP ' + r.status);
+    setJfrBadge(d.jfr_manuscript_id);
+    if (project) project.jfr_manuscript_id = d.jfr_manuscript_id;
+    const msg = (d.created ? 'Created JFR manuscript' : 'Updated JFR manuscript') + `: ${d.jfr_manuscript_id}`;
+    if (confirm(msg + '.\n\nOpen journal-fit recommendations now?')) window.location.href = d.recommend_url;
+    else setStatus(msg);
+  } catch (e) {
+    alert('Push to JFR failed: ' + e.message);
+  } finally { btn.disabled = false; }
+}
+
+// ══ Writing standard: skill-backed drafting, revision, and audit ═════════════
+// The skill pack lives in Local_Rag/rag/skills/. It is far too large to send to
+// the model whole (~33k tokens against a 32k window), so the server assembles a
+// section-specific brief per request — see Local_Rag/rag/skills/loader.py.
+
+let SKILL = null;              // {skills:[], sections:[{id,label}], default}
+let lastAudit = null;
+
+async function loadSkillMeta() {
+  try {
+    const r = await fetch('/api/rag/skills');
+    if (!r.ok) throw new Error(r.statusText);
+    SKILL = await r.json();
+  } catch (e) { SKILL = null; }
+
+  const badge = document.getElementById('skill-badge');
+  const sel = document.getElementById('section-select');
+  if (!SKILL || !SKILL.default) {
+    badge.textContent = 'none installed';
+    badge.title = 'Drop a skill folder into Local_Rag/rag/skills/ to enable this.';
+    ['audit-btn', 'ai-draft-btn', 'ai-revise-btn'].forEach(id => {
+      const b = document.getElementById(id); if (b) b.disabled = true;
+    });
+    return;
+  }
+  badge.textContent = SKILL.default;
+  badge.title = (SKILL.skills[0] && SKILL.skills[0].description || '').slice(0, 400);
+  sel.innerHTML = '<option value="">auto-detect</option>' +
+    (SKILL.sections || []).map(s =>
+      `<option value="${escapeHtml(s.id)}">${escapeHtml(s.label)}</option>`).join('');
+  guessSectionFromFile();
+}
+
+// Pre-select the section from the file slug/title. The server guesses too; doing
+// it here as well means the dropdown shows what the audit will actually use.
+function guessSectionFromFile() {
+  const sel = document.getElementById('section-select');
+  if (!sel || sel.value) return;
+  const blob = ((currentFile || '') + ' ' + (fileData?.title || '')).toLowerCase().replace(/[-_]/g, ' ');
+  const hints = [['results and discussion','results'],['introduction','intro'],['background','intro'],
+    ['method','methods'],['experimental','methods'],['materials','methods'],['result','results'],
+    ['discussion','discussion'],['conclusion','conclusion'],['abstract','abstract'],
+    ['summary','abstract'],['reviewer','reviewer'],['response','reviewer'],['intro','intro']];
+  for (const [needle, id] of hints) {
+    if (blob.includes(needle)) { sel.value = id; return; }
+  }
+}
+
+function onSectionChange() { if (lastAudit) runAudit(); }
+
+function currentSection() {
+  return document.getElementById('section-select')?.value || '';
+}
+
+// ── Audit ────────────────────────────────────────────────────────────────────
+
+async function runAudit() {
+  if (!currentFile) { alert('Open a section first.'); return; }
+  openDrawer('standard');
+  const out = document.getElementById('audit-out');
+  const btn = document.getElementById('audit-btn');
+  out.innerHTML = '<div style="color: var(--ink-faint)">Auditing…</div>';
+  btn.disabled = true;
+  try {
+    // Audit what is on screen, including unsaved edits.
+    const text = cm ? cm.getValue() : '';
+    const r = await fetch('/api/rag/writing/audit', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({text, section: currentSection() || null}),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || r.statusText);
+    lastAudit = d;
+    renderAudit(d);
+  } catch (e) {
+    out.innerHTML = `<div style="color: var(--danger)">Audit failed: ${escapeHtml(e.message)}</div>`;
+  } finally { btn.disabled = false; }
+}
+
+function verdictStyle(v) {
+  return v === 'ok' ? 'color: var(--data)'
+       : v === 'high' ? 'color: var(--warn)'
+       : 'color: var(--signal)';
+}
+
+function renderAudit(d) {
+  const out = document.getElementById('audit-out');
+  if (!d.ok) {
+    out.innerHTML = `<div style="color: var(--ink-faint)">${escapeHtml(d.error || 'nothing to audit')}</div>`;
+    return;
+  }
+  const sl = d.sentence_length, c = d.corpus, pl = d.paragraph_length;
+  const off = (d.markers || []).filter(m => m.verdict !== 'ok');
+  const sec = d.section;
+
+  const row = (label, val, target, verdict) => `
+    <div class="flex items-baseline gap-2 py-0.5">
+      <span class="flex-1 truncate">${escapeHtml(label)}</span>
+      <span class="font-mono" style="${verdictStyle(verdict)}">${val}</span>
+      <span class="font-mono text-[10px] w-20 text-right" style="color: var(--ink-faint)">${escapeHtml(target)}</span>
+    </div>`;
+
+  let html = `<div class="font-mono text-[10px] mb-2.5" style="color: var(--ink-faint)">${escapeHtml(d.summary)}</div>`;
+
+  html += `<div class="mb-3">
+    <div class="eyebrow mb-1">Rhythm</div>
+    ${row('sentence median', sl.median + 'w', 'corpus ' + c.sentence_median,
+          Math.abs(sl.median - c.sentence_median) <= 6 ? 'ok' : 'high')}
+    ${row('spread (IQR)', sl.p25 + '–' + sl.p75, c.sentence_iqr[0] + '–' + c.sentence_iqr[1],
+          (sl.p75 - sl.p25) >= 10 ? 'ok' : 'low')}
+    ${row('under 15 words', sl.pct_under_15 + '%', c.pct_under_15 + '%',
+          sl.pct_under_15 >= 8 ? 'ok' : 'low')}
+    ${row('over 30 words', sl.pct_over_30 + '%', c.pct_over_30 + '%',
+          sl.pct_over_30 >= 12 ? 'ok' : 'low')}
+    ${row('paragraph median', pl.median + 'w', c.paragraph_median_words + 'w',
+          pl.median <= 180 ? 'ok' : 'high')}
+    ${(sl.notes || []).map(n =>
+        `<div class="mt-1.5 text-[11px] leading-snug" style="color: var(--warn)">${escapeHtml(n)}</div>`).join('')}
+  </div>`;
+
+  if (sec) {
+    html += `<div class="mb-3">
+      <div class="eyebrow mb-1">${escapeHtml(sec.name)} profile</div>
+      ${sec.rows.map(r => row(r.label, r.rate, (r.low ?? '-') + '–' + (r.high ?? '-'), r.verdict)).join('')}
+      ${sec.note ? `<div class="mt-1.5 text-[11px] leading-snug" style="color: var(--ink-faint)">${escapeHtml(sec.note)}</div>` : ''}
+    </div>`;
+  }
+
+  html += `<div class="mb-3">
+    <div class="eyebrow mb-1">Markers off target <span class="font-mono normal-case tracking-normal">(${off.length})</span></div>
+    ${off.length
+      ? off.map(m => row(m.label, m.rate, (m.low ?? '-') + '–' + (m.high ?? '-'), m.verdict)).join('')
+      : '<div style="color: var(--ink-faint)">All within the corpus range.</div>'}
+  </div>`;
+
+  const flags = d.hard_flags || [];
+  html += `<div class="mb-3">
+    <div class="eyebrow mb-1">Hard flags <span class="font-mono normal-case tracking-normal">(${flags.length})</span></div>
+    ${flags.length
+      ? flags.slice(0, 25).map(f => `
+        <div class="mb-1.5 leading-snug">
+          <span class="font-medium" style="color: var(--danger)">${escapeHtml(f.kind)}</span>
+          <span style="color: var(--ink-faint)"> · ${escapeHtml(f.match)}</span>
+          <div class="text-[11px] mt-0.5" style="color: var(--ink-faint)">…${escapeHtml(f.context)}…</div>
+        </div>`).join('')
+      : '<div style="color: var(--data)">None.</div>'}
+    ${flags.length > 25 ? `<div style="color: var(--ink-faint)">+${flags.length - 25} more</div>` : ''}
+  </div>`;
+
+  const op = d.openers || [];
+  html += `<details class="mt-2">
+    <summary class="cursor-pointer eyebrow">Paragraph openers (${op.length}) — read in order</summary>
+    <div class="mt-1.5 space-y-1">
+      ${op.map(o => `<div class="leading-snug"><span class="font-mono" style="color: var(--ink-faint)">${o.n}.</span> ${escapeHtml(o.text)}</div>`).join('')}
+    </div>
+    <div class="mt-1.5 text-[11px] leading-snug" style="color: var(--ink-faint)">
+      These should tell the section's argument on their own. If they do not, the problem is structural, not lexical.
+    </div>
+  </details>`;
+
+  out.innerHTML = html;
+}
+
+// ── Drafting / revision via the Style Writer agent ───────────────────────────
+
+async function streamSSE(url, body, handlers) {
+  const resp = await fetch(url, {
+    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body),
+  });
+  if (!resp.ok) throw new Error(resp.statusText);
+  const reader = resp.body.getReader();
+  const dec = new TextDecoder();
+  let buf = '', curEvent = null;
+  while (true) {
+    const {done, value} = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, {stream: true});
+    const lines = buf.split('\n'); buf = lines.pop() ?? '';
+    for (const line of lines) {
+      if (line.startsWith('event: ')) curEvent = line.slice(7).trim();
+      else if (line.startsWith('data: ') && curEvent) {
+        try { if (handlers[curEvent]) handlers[curEvent](JSON.parse(line.slice(6))); } catch (e) {}
+        curEvent = null;
+      }
+    }
+  }
+}
+
+async function runWriter({instruction, draft, mode, btnId, insert}) {
+  if (!currentFile) { alert('Open a section first.'); return; }
+  const btn = document.getElementById(btnId);
+  const label = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = mode === 'revise' ? 'Revising…' : 'Drafting…';
+  setStatus(mode === 'revise' ? 'revising…' : 'drafting…');
+
+  let collected = '';
+  try {
+    await streamSSE('/api/rag/query', {
+      query: instruction,
+      agent: 'writing',
+      section: currentSection() || null,
+      write_mode: mode,
+      draft_text: draft || null,
+    }, {
+      token: (d) => { collected += d.text; setStatus(`${mode}… ${collected.split(/\s+/).length}w`); },
+      done:  (d) => { if (d.answer) collected = d.answer; },
+      error: (d) => { throw new Error(d.message || 'generation failed'); },
+    });
+  } catch (e) {
+    setStatus('—');
+    btn.disabled = false; btn.innerHTML = label;
+    alert('Writer failed: ' + e.message);
+    return;
+  }
+
+  btn.disabled = false; btn.innerHTML = label;
+  setStatus('—');
+  const text = (collected || '').trim();
+  if (!text) { alert('The model returned nothing.'); return; }
+  insert(text);
+  dirty = true;
+  updatePreview();
+  saveCurrent(true);
+}
+
+function aiDraft() {
+  const what = prompt(
+    'What should this passage say?\n\n' +
+    'Give the findings, numbers, and conditions — the model supplies the prose, not the facts.\n' +
+    'e.g. "Results paragraph: NB concentration fell from 210 to 145 ×10⁶/mL over 30 d at 1 wt% NaCl; ' +
+    'zeta went from −38 to −21 mV (Fig. 3b)."');
+  if (!what) return;
+  runWriter({
+    instruction: what, draft: null, mode: 'draft', btnId: 'ai-draft-btn',
+    insert: (text) => insertAtCursor((cm.getValue().trim() ? '\n\n' : '') + text),
+  });
+}
+
+function aiRevise() {
+  if (!cm) return;
+  const sel = cm.getSelection();
+  const whole = !sel;
+  const draft = whole ? cm.getValue() : sel;
+  if (!draft.trim()) { alert('Nothing to revise — the section is empty.'); return; }
+  const scope = whole ? 'the whole section' : 'the selected text';
+  if (!confirm(
+      `Revise ${scope} to the writing standard?\n\n` +
+      'Facts, numbers, and citations are preserved; register, rhythm, and connectives are reworked. ' +
+      'The result replaces ' + scope + ' — undo with ⌘Z if you do not like it.')) return;
+  runWriter({
+    instruction: `Revise this ${currentSection() || 'manuscript'} passage to the writing standard.`,
+    draft, mode: 'revise', btnId: 'ai-revise-btn',
+    insert: (text) => { if (whole) setEditorContent(text); else cm.replaceSelection(text); },
+  });
+}
+
+function exportMd() { window.location.href = `/api/rag/projects/${encodeURIComponent(PROJECT_ID)}/export?format=md`; }
+function exportBib() { window.location.href = `/api/rag/projects/${encodeURIComponent(PROJECT_ID)}/export?format=bibtex`; }
+function exportHtml() { window.open(`/api/rag/projects/${encodeURIComponent(PROJECT_ID)}/export?format=html`, '_blank'); }
+
+async function deleteProject() {
+  if (!confirm('Delete this project and all its sections? This cannot be undone.')) return;
+  await fetch(`/api/rag/projects/${encodeURIComponent(PROJECT_ID)}`, {method: 'DELETE'});
+  window.location.href = '/write';
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', async () => {
+  initEditor();
+  initImageDrop();
+  initResizer();
+  restoreLayout();
+  fitWorkspace();
+
+  const main = document.querySelector('main');
+  if (main && window.ResizeObserver) new ResizeObserver(fitWorkspace).observe(main);
+  window.addEventListener('resize', fitWorkspace);
+
+  document.getElementById('project-title').addEventListener('blur', saveProjectFields);
+  document.getElementById('editor-title').addEventListener('blur', saveFileTitle);
+  document.getElementById('jfr-claim').addEventListener('blur', saveProjectFields);
+  document.getElementById('jfr-techniques').addEventListener('blur', saveProjectFields);
+  document.getElementById('new-file-title').addEventListener('keydown', e => {
+    if (e.key === 'Enter') addFile();
+    if (e.key === 'Escape') toggleAdd(false);
+  });
+  document.addEventListener('click', e => {
+    if (pickerOpen && !e.target.closest('#picker-pop') && !e.target.closest('#toolbar button')) closePicker();
+  });
+  // The same shortcuts as the editor's, for when focus is outside CodeMirror.
+  // Keyed on e.code, not e.key: on macOS Alt+P reports 'π', not 'p'.
+  document.addEventListener('keydown', e => {
+    if (!e.altKey || e.metaKey || e.ctrlKey) return;
+    if (e.code === 'KeyP') { e.preventDefault(); toggleDrawer(); }
+    else if (e.code === 'KeyF') { e.preventDefault(); toggleFocus(); }
+  });
+
+  await loadProject();
+  await loadSkillMeta();
+  fitWorkspace();
+});
+</script>
+{% endblock %}

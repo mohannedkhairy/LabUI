@@ -23,7 +23,7 @@ from typing import Any, Optional
 
 import requests
 from fastapi import APIRouter, HTTPException, Query, Request, UploadFile, File
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 # ── Make Local_Rag/rag importable ─────────────────────────────────────────────
@@ -53,9 +53,11 @@ from retrieval.rerank import load_reranker  # noqa: E402
 from retrieval.search import search as _search  # noqa: E402
 from generation.validate import validate_citations  # noqa: E402
 from generation.citations import build_citation_map, build_references, strip_model_references  # noqa: E402
-from generation.agents import AGENTS, get_agent, DEFAULT_AGENT  # noqa: E402
+from generation.agents import AGENTS, get_agent, DEFAULT_AGENT, WRITING_SECTIONS  # noqa: E402
+from skills import loader as _skills  # noqa: E402  — progressive skill-pack loader
 from retrieval.web_search import web_search as _web_search  # noqa: E402
 import memory as _mem  # noqa: E402
+import citations as _citations  # noqa: E402
 from retrieval.graph import (  # noqa: E402
     init_graph_db as _init_graph_db,
     get_graph_stats as _graph_stats,
@@ -635,6 +637,19 @@ def api_search(body: SearchBody):
     except Exception as e:
         raise HTTPException(500, str(e))
 
+    # Cards should carry the same bibliographic record used by the writer. Use
+    # the catalog as a fallback for older indexes whose papers rows predate
+    # metadata columns or have not yet been enriched.
+    for result in results:
+        try:
+            rec = _citations.resolve_key(result.get("paper_id", ""))
+            if rec:
+                result["citation_key"] = rec.get("citation_key")
+                for field in ("title", "authors", "year", "doi", "journal", "url"):
+                    if not result.get(field) and rec.get(field):
+                        result[field] = rec[field]
+        except Exception:
+            pass
     return {"results": results, "total": len(results)}
 
 
@@ -649,18 +664,25 @@ class QueryBody(BaseModel):
     images: list[str] = []
     selected_paper_ids: Optional[list[str]] = None
     doc_context: Optional[str] = None
+    # Skill-backed agents (writing): which manuscript section, and whether we are
+    # drafting new prose or reworking `draft_text`.
+    section: Optional[str] = None
+    write_mode: Optional[str] = None      # "draft" | "revise"
+    draft_text: Optional[str] = None
 
 
 def _stream_tokens(query, chunks, agent_id=DEFAULT_AGENT, web_results=None,
                    images=None, doc_context=None, memories=None,
                    base_url=OLLAMA_BASE_URL, gen_model=GEN_MODEL,
-                   style_samples=None):
+                   style_samples=None, draft_text=None, section=None,
+                   write_mode="draft"):
     from generation.prompt import build_messages
 
     messages = build_messages(
         query, chunks, agent_id, web_results,
         doc_context=doc_context, memories=memories,
-        style_samples=style_samples,
+        style_samples=style_samples, draft_text=draft_text,
+        section=section, mode=write_mode,
     )
 
     # Native /api/chat attaches images as a base64 list on the message (not as
@@ -723,6 +745,13 @@ def api_query(body: QueryBody):
     doc_context = (body.doc_context or "").strip() or None
     cite_required = agent.get("cite_required", True)
     style_samples = _load_style_samples() if agent_id == "writing" else None
+    # Only skill-backed agents take a section; ignore the field otherwise so a
+    # stale value in the UI cannot leak into an unrelated agent's prompt.
+    section = (body.section or "").strip().lower() or None
+    if not agent.get("skill") or section not in _skills.SECTION_MAP:
+        section = None
+    write_mode = "revise" if (body.write_mode or "").strip().lower() == "revise" else "draft"
+    draft_text = (body.draft_text or "").strip() or None
 
     if not query:
         raise HTTPException(400, "empty query")
@@ -759,7 +788,7 @@ def api_query(body: QueryBody):
                 placeholders = ",".join("?" * len(new_cids))
                 extra_rows = conn.execute(
                     f"SELECT c.chunk_id, c.paper_id, c.text, c.section_name,"
-                    f"       c.page_start, c.page_end, p.title, p.authors, p.year, p.doi"
+                    f"       c.page_start, c.page_end, p.title, p.authors, p.year, p.doi, p.journal, p.volume, p.issue, p.pages, p.publisher, p.url"
                     f" FROM chunks c JOIN papers p USING(paper_id)"
                     f" WHERE c.chunk_id IN ({placeholders})",
                     new_cids,
@@ -798,13 +827,23 @@ def api_query(body: QueryBody):
         if pid in _seen_pids:
             continue
         _seen_pids.add(pid)
+        catalog_rec = None
+        try:
+            catalog_rec = _citations.resolve_key(pid)
+        except Exception:
+            pass
         papers_meta.append({
             "n": cite_map.get(pid),
             "paper_id": pid,
+            "citation_key": (catalog_rec or {}).get("citation_key"),
             "title": c.get("title", ""),
             "authors": c.get("authors", ""),
             "year": c.get("year"),
             "doi": c.get("doi"),
+            "journal": c.get("journal"),
+            "volume": c.get("volume"), "issue": c.get("issue"),
+            "pages": c.get("pages"), "publisher": c.get("publisher"),
+            "url": c.get("url"),
             "section_name": c.get("section_name", ""),
             "page_start": c.get("page_start"),
             "page_end": c.get("page_end"),
@@ -830,7 +869,7 @@ def api_query(body: QueryBody):
             collected = []
             for token in _stream_tokens(
                 query, chunks, agent_id, web_results, images, doc_context, memories,
-                base_url, gen_model, style_samples,
+                base_url, gen_model, style_samples, draft_text, section, write_mode,
             ):
                 collected.append(token)
                 yield f"event: token\ndata: {json.dumps({'text': token})}\n\n"
@@ -884,7 +923,7 @@ def api_paper(id: str = Query("")):
         conn = _open_db()
         _ensure_summary_col(conn)
         row = conn.execute(
-            "SELECT title, authors, year, source_pdf, summary FROM papers WHERE paper_id = ?",
+            "SELECT p.title, p.authors, p.year, p.source_pdf, p.summary, p.doi, p.journal, p.url, p.abstract, c.citation_key FROM papers p LEFT JOIN citation_catalog c ON c.paper_id=p.paper_id WHERE p.paper_id = ?",
             (paper_id,),
         ).fetchone()
         sections = conn.execute(
@@ -913,6 +952,7 @@ def api_paper(id: str = Query("")):
     pdf_available = bool(row[3] and Path(row[3]).exists())
     return {
         "paper_id": paper_id, "title": row[0], "authors": row[1], "year": row[2],
+        "doi": row[5], "journal": row[6], "url": row[7], "abstract": row[8], "citation_key": row[9],
         "source_pdf": row[3], "pdf_available": pdf_available,
         "sections": [{"name": s[0], "page_start": s[1], "page_end": s[2]} for s in sections],
         "summary": summary_text,
@@ -1260,6 +1300,45 @@ def api_note_get(note_id: str):
     return {"id": note_id, "content": p.read_text(encoding="utf-8", errors="replace")}
 
 
+class NoteUpdate(BaseModel):
+    title: str = ""
+    content: str = ""
+
+
+@router.put("/notes/{note_id}")
+def api_note_update(note_id: str, body: NoteUpdate):
+    """Overwrite an existing note IN PLACE — same id, same file, no new note.
+    Title (frontmatter) is updated; original date and agent are preserved."""
+    if not re.match(r"^[\w\-]+$", note_id):
+        raise HTTPException(400, "invalid id")
+    p = NOTES_DIR / f"{note_id}.md"
+    if not p.exists():
+        raise HTTPException(404, "not found")
+    existing = p.read_text(encoding="utf-8", errors="replace")
+
+    # Preserve the stored metadata unless the client supplies a new title.
+    title = (body.title or "").strip()
+    agent, date = "", None
+    m = re.match(r"^---\n(.*?)\n---\n?", existing, re.S)
+    if m:
+        fm = m.group(1)
+        if not title:
+            tm = re.search(r"^title:\s*(.+)$", fm, re.M)
+            if tm:
+                title = tm.group(1).strip().strip("\"'")
+        am = re.search(r"^agent:\s*(.+)$", fm, re.M)
+        agent = am.group(1).strip() if am else ""
+        dm = re.search(r"^date:\s*(.+)$", fm, re.M)
+        date = dm.group(1).strip() if dm else None
+    title = title or note_id
+    date = date or datetime.now().isoformat()[:19]
+
+    content = body.content or ""
+    fm_block = f"---\ntitle: {title}\nagent: {agent}\ndate: {date}\n---\n\n"
+    p.write_text(fm_block + f"# {title}\n\n" + content, encoding="utf-8")
+    return {"id": note_id, "title": title}
+
+
 @router.delete("/notes/{note_id}")
 def api_note_delete(note_id: str):
     if not re.match(r"^[\w\-]+$", note_id):
@@ -1397,6 +1476,63 @@ def api_clip_delete(clip_id: str):
             pass
     _unindex_clip_chunk(clip_id)
     return {"ok": True}
+
+
+# ── /skills — installed skill packs (writing standards) ───────────────────────
+@router.get("/skills")
+def api_skills():
+    """Installed skill packs, the sections they cover, and the size of the brief
+    each section produces. The UI uses this to build the section picker and to
+    show whether a standard is actually loaded."""
+    try:
+        packs = _skills.list_skills()
+    except Exception as e:
+        return {"skills": [], "sections": [], "error": f"{type(e).__name__}: {e}"}
+    return {
+        "skills": packs,
+        "sections": [{"id": sid, "label": label} for sid, label in WRITING_SECTIONS],
+        "default": _skills.DEFAULT_SKILL if _skills.is_installed() else None,
+    }
+
+
+@router.get("/skills/brief")
+def api_skill_brief(section: str = Query(""), mode: str = Query("draft"),
+                    skill: str = Query(""), preview: bool = Query(False)):
+    """Inspect the brief that would be injected for a given section/mode.
+
+    Diagnostic — useful when a draft comes back off-register and you want to see
+    exactly what the model was told. `preview=true` returns the text itself.
+    """
+    skill = skill or _skills.DEFAULT_SKILL
+    if not _skills.is_installed(skill):
+        raise HTTPException(404, f"skill '{skill}' is not installed")
+    sec = (section or "").strip().lower() or None
+    mode = "revise" if mode == "revise" else "draft"
+    stats = _skills.brief_stats(sec, mode, skill)
+    if preview:
+        stats["text"] = _skills.build_writing_brief(sec, mode, skill)
+    return stats
+
+
+@router.get("/skills/{skill}/phrasebank.html", response_class=HTMLResponse)
+def api_skill_phrasebank(skill: str):
+    """The browsable phrase-bank page for a skill pack, served raw.
+
+    Embedded in an iframe by the /research/phrasebank tab so it keeps its own
+    self-contained styling; it also works opened directly. This is a build
+    artifact — regenerate with skills/build_phrasebank_html.py after editing
+    phrase-bank.md.
+    """
+    if "/" in skill or ".." in skill:          # no traversal out of skills/
+        raise HTTPException(400, "bad skill name")
+    path = _skills.phrasebank_html(skill)
+    if path is None:
+        raise HTTPException(
+            404,
+            f"no phrase-bank page built for '{skill}' — run "
+            "python3 Local_Rag/rag/skills/build_phrasebank_html.py",
+        )
+    return HTMLResponse(path.read_text(encoding="utf-8"))
 
 
 # ── /style — writing-style samples for the Style Writer agent ─────────────────
@@ -1821,5 +1957,13 @@ def init_databases() -> None:
     STYLE_DIR.mkdir(parents=True, exist_ok=True)
     _sweep_macos_sidecars()
     _mem.init_db()
+    # Keep a searchable, stable-key citation catalog alongside the indexed
+    # papers.  Sync is idempotent and preserves the original paper ids.
+    try:
+        _citations.init_db()
+        n = _citations.sync_rag_papers()
+        print(f"[rag] citation catalog ready ({n} papers)")
+    except Exception as e:
+        print(f"[rag] citation catalog skipped: {e}")
     _init_graph_db()
     _init_clips_db()

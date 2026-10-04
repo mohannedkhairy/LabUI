@@ -2,8 +2,14 @@
 Citation-enforced prompt builder for Ollama chat API.
 Supports per-agent system prompts via generation.agents.
 Supports doc_context for uploaded PDF/document text.
+
+Skill-backed agents (currently `writing`) take two extra arguments:
+    section  — which manuscript section is being written ("results", "intro", …)
+    mode     — "draft" (new prose) or "revise" (reworking an existing draft)
+Both are passed to generation.agents.resolve_system(), which assembles the
+matching slice of the installed skill pack. See Local_Rag/rag/skills/loader.py.
 """
-from generation.agents import get_agent, AGENTS, DEFAULT_AGENT
+from generation.agents import get_agent, resolve_system, AGENTS, DEFAULT_AGENT
 from generation.citations import build_citation_map
 
 
@@ -15,6 +21,9 @@ def build_user_prompt(
     doc_context: str | None = None,
     memories: list[dict] | None = None,
     style_samples: str | None = None,
+    draft_text: str | None = None,
+    section: str | None = None,
+    mode: str = "draft",
 ) -> str:
     agent = get_agent(agent_id)
 
@@ -75,7 +84,28 @@ def build_user_prompt(
             + style_samples
         )
 
+    # ── Existing draft being revised (writing agent, revise mode) ─────────────
+    draft_section = ""
+    if draft_text:
+        draft_section = (
+            "\n\n# Current draft (revise THIS text; keep its facts, numbers, and "
+            "citations exactly as they are)\n" + draft_text
+        )
+
     instruction = agent.get("instruction", "")
+    if section:
+        instruction += (
+            f" This passage belongs to the {section.upper()} section — follow that "
+            "section's corpus anchors in the writing standard (citation density, "
+            "passive rate, hedging rate, sentence length)."
+        )
+    if mode == "revise" and draft_text:
+        instruction += (
+            " Return the revised passage only. Do not add findings, numbers, or "
+            "citations that are not already in the draft or the excerpts; if a "
+            "sentence is unsupported, keep it and flag it in the notes line "
+            "instead of deleting it."
+        )
     if web_results:
         instruction += (
             " You may also cite web search results as [web:N] where N is the result number. "
@@ -93,7 +123,8 @@ def build_user_prompt(
         f"{web_section}"
         f"{doc_section}"
         f"{memory_section}"
-        f"{style_section}\n\n"
+        f"{style_section}"
+        f"{draft_section}\n\n"
         f"# Instructions\n{instruction}"
     )
 
@@ -106,12 +137,14 @@ def build_messages(
     doc_context: str | None = None,
     memories: list[dict] | None = None,
     style_samples: str | None = None,
+    draft_text: str | None = None,
+    section: str | None = None,
+    mode: str = "draft",
 ) -> list[dict]:
-    agent = get_agent(agent_id)
     return [
-        {"role": "system", "content": agent["system"]},
+        {"role": "system", "content": resolve_system(agent_id, section=section, mode=mode)},
         {"role": "user",   "content": build_user_prompt(
             query, chunks, agent_id, web_results, doc_context, memories,
-            style_samples,
+            style_samples, draft_text, section, mode,
         )},
     ]
