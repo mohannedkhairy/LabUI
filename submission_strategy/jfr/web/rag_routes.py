@@ -1362,6 +1362,7 @@ def api_notes_list():
         notes.append({
             "id": f.stem, "title": title,
             "folder": meta.get("folder") or None,
+            "experiment": meta.get("experiment") or None,
             "modified": f.stat().st_mtime,
             "preview": body[:200].replace("\n", " ").strip(),
         })
@@ -1492,7 +1493,21 @@ def api_note_update(note_id: str, body: NoteUpdate):
     meta["title"] = title
     meta.setdefault("date", datetime.now().isoformat()[:19])
     _write_note(p, meta, f"# {title}\n\n" + (body.content or ""))
-    return {"id": note_id, "title": title}
+    synced = False
+    if meta.get("experiment"):
+        # A Planner experiment's notes, mirrored here — write the edit back.
+        try:
+            from jfr.config import get_settings
+            from jfr.db import get_conn
+            from jfr.web.experiment_notes import update_from_note
+            conn = get_conn(get_settings().db_path)
+            try:
+                synced = update_from_note(conn, meta, f"# {title}\n\n" + (body.content or ""))
+            finally:
+                conn.close()
+        except Exception as e:
+            print(f"[notes] experiment write-back failed: {e}")
+    return {"id": note_id, "title": title, "experiment": meta.get("experiment"), "synced": synced}
 
 
 @router.delete("/notes/{note_id}")

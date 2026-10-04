@@ -34,8 +34,8 @@
   function mentionHref(type, id) {
     switch (type) {
       case 'manuscript': return '/manuscripts/' + encodeURIComponent(id) + '/edit';
-      case 'experiment': return '/experiments/' + encodeURIComponent(id);
-      case 'task':       return '/tasks?open=' + encodeURIComponent(id);
+      case 'experiment': return '/plan?open=experiment:' + encodeURIComponent(id);
+      case 'task':       return '/plan?open=task:' + encodeURIComponent(id);
       case 'paper':      return '/research/paper/' + encodeURIComponent(id) + '/view';
       case 'memory':     return '/research/memory';
       case 'note':       return '/research/notes?open=' + encodeURIComponent(id);

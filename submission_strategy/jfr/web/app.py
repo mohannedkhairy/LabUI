@@ -8,8 +8,9 @@ from __future__ import annotations
 
 import json
 import re
+from urllib.parse import quote, urlencode
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -44,6 +45,14 @@ async def lifespan(app: FastAPI):
                 print(f"[jfr] seeded {loaded} journals from {_s.journals_yaml.name}")
         except Exception as e:
             print(f"[jfr] journal seed skipped: {e}")
+        # Mirror experiment notes into the Notes library (idempotent).
+        try:
+            from jfr.web import experiment_notes as _xn
+            n = _xn.backfill(_conn0)
+            if n:
+                print(f"[jfr] {n} experiment note(s) mirrored to Notes")
+        except Exception as e:
+            print(f"[jfr] experiment-notes backfill skipped: {e}")
         _conn0.close()
     except Exception as e:
         print(f"[jfr] schema apply FAILED: {e}")
@@ -1004,6 +1013,7 @@ def research_paper_view_page(request: Request, paper_id: str):
 # ── Experiments API ──────────────────────────────────────────────────────────
 
 from jfr.db.schema import EXPERIMENT_STATUSES  # noqa: E402
+from jfr.web import experiment_notes as _exp_notes  # noqa: E402
 
 class ExperimentBody(BaseModel):
     manuscript_id: Optional[str] = None
@@ -1110,7 +1120,8 @@ def create_experiment_api(body: ExperimentBody):
          now, now),
     )
     conn.commit()
-    return {"id": exp_id}
+    note = _exp_notes.sync({"id": exp_id, "name": body.name, "notes_md": body.notes_md})
+    return {"id": exp_id, "note_id": note}
 
 
 @app.put("/api/experiments/{exp_id}")
@@ -1135,120 +1146,41 @@ def update_experiment_api(exp_id: str, body: ExperimentBody):
          now, exp_id),
     )
     conn.commit()
-    return {"ok": True}
+    note = _exp_notes.sync({"id": exp_id, "name": body.name, "notes_md": body.notes_md})
+    return {"ok": True, "note_id": note}
 
 
 @app.delete("/api/experiments/{exp_id}")
 def delete_experiment_api(exp_id: str):
     conn = _conn()
+    row = conn.execute("SELECT name FROM experiment WHERE id=?", (exp_id,)).fetchone()
     res = conn.execute("DELETE FROM experiment WHERE id=?", (exp_id,))
     conn.commit()
     if res.rowcount == 0:
         raise HTTPException(404, "experiment not found")
+    _exp_notes.unlink(exp_id, row["name"] if row else "")   # the note outlives it
     return {"ok": True}
 
 
-# ── Experiments: page routes ─────────────────────────────────────────────────
+# ── Experiments: page routes → Planner ───────────────────────────────────────
+# Experiments, tasks and the calendar live on one page (/plan). The old
+# addresses stay valid — bookmarks, @-mention chips, links in notes — and land
+# on the Planner with the right view or item open.
 
-@app.get("/experiments", response_class=HTMLResponse)
-def experiments_page(request: Request):
-    conn = _conn()
-    rows = conn.execute(
-        "SELECT * FROM experiment ORDER BY COALESCE(ran_on, scheduled_for, created_at) DESC"
-    ).fetchall()
-    titles = _ms_title_map(conn)
-    experiments = [_experiment_row_to_dict(r, titles) for r in rows]
-
-    # Group: by manuscript_id (titles for headers), plus "unassigned"
-    groups: dict[str, dict] = {}
-    for e in experiments:
-        mid = e.get("manuscript_id") or ""
-        if mid not in groups:
-            groups[mid] = {
-                "manuscript_id": mid or None,
-                "manuscript_title": titles.get(mid, "Unassigned") if mid else "Unassigned",
-                "experiments": [],
-            }
-        groups[mid]["experiments"].append(e)
-
-    # Order: assigned groups first (by title), then unassigned last
-    assigned = sorted(
-        (g for k, g in groups.items() if k),
-        key=lambda g: (g["manuscript_title"] or "").lower(),
-    )
-    unassigned = groups.get("", None)
-    grouped = assigned + ([unassigned] if unassigned else [])
-
-    # Upcoming: planned + future scheduled_for
-    today = datetime.now().strftime("%Y-%m-%d")
-    upcoming = [
-        e for e in experiments
-        if e.get("status") == "planned" and (e.get("scheduled_for") or "") >= today
-    ]
-    upcoming.sort(key=lambda e: e.get("scheduled_for") or "")
-
-    manuscripts = conn.execute("SELECT id, title FROM manuscript ORDER BY title").fetchall()
-
-    return templates.TemplateResponse(request, "experiments.html", {
-        "grouped": grouped,
-        "upcoming": upcoming,
-        "manuscripts": [dict(m) for m in manuscripts],
-        "total_count": len(experiments),
-        "statuses": EXPERIMENT_STATUSES,
-    })
+@app.get("/experiments")
+def experiments_page(ms: str = ""):
+    return RedirectResponse("/plan?view=list&kind=experiment" + (f"&ms={quote(ms)}" if ms else ""), status_code=307)
 
 
-@app.get("/experiments/new", response_class=HTMLResponse)
-def experiment_new_page(request: Request, ms: str = ""):
-    conn = _conn()
-    manuscripts = conn.execute("SELECT id, title FROM manuscript ORDER BY title").fetchall()
-    return templates.TemplateResponse(request, "experiment_form.html", {
-        "mode": "new",
-        "exp": None,
-        "preselect_ms": ms,
-        "manuscripts": [dict(m) for m in manuscripts],
-        "statuses": EXPERIMENT_STATUSES,
-    })
+@app.get("/experiments/new")
+def experiment_new_page(ms: str = ""):
+    return RedirectResponse("/plan?new=experiment" + (f"&ms={quote(ms)}" if ms else ""), status_code=307)
 
 
-@app.get("/experiments/{exp_id}", response_class=HTMLResponse)
-def experiment_detail_page(request: Request, exp_id: str):
-    conn = _conn()
-    row = conn.execute("SELECT * FROM experiment WHERE id=?", (exp_id,)).fetchone()
-    if not row:
-        raise HTTPException(404, f"Experiment {exp_id!r} not found")
-    titles = _ms_title_map(conn)
-    exp = _experiment_row_to_dict(row, titles)
-
-    task_rows = conn.execute(
-        "SELECT * FROM task WHERE experiment_id=? ORDER BY (status='done'), (due_date IS NULL), due_date ASC",
-        (exp_id,),
-    ).fetchall()
-    exp_names = _exp_name_map(conn)
-    linked_tasks = [_task_row_to_dict(r, titles, exp_names) for r in task_rows]
-
-    return templates.TemplateResponse(request, "experiment_detail.html", {
-        "exp": exp,
-        "linked_tasks": linked_tasks,
-    })
-
-
-@app.get("/experiments/{exp_id}/edit", response_class=HTMLResponse)
-def experiment_edit_page(request: Request, exp_id: str):
-    conn = _conn()
-    row = conn.execute("SELECT * FROM experiment WHERE id=?", (exp_id,)).fetchone()
-    if not row:
-        raise HTTPException(404, f"Experiment {exp_id!r} not found")
-    titles = _ms_title_map(conn)
-    exp = _experiment_row_to_dict(row, titles)
-    manuscripts = conn.execute("SELECT id, title FROM manuscript ORDER BY title").fetchall()
-    return templates.TemplateResponse(request, "experiment_form.html", {
-        "mode": "edit",
-        "exp": exp,
-        "preselect_ms": exp.get("manuscript_id") or "",
-        "manuscripts": [dict(m) for m in manuscripts],
-        "statuses": EXPERIMENT_STATUSES,
-    })
+@app.get("/experiments/{exp_id}")
+@app.get("/experiments/{exp_id}/edit")
+def experiment_detail_page(exp_id: str):
+    return RedirectResponse(f"/plan?open=experiment:{quote(exp_id)}", status_code=307)
 
 
 # ── Tasks API ─────────────────────────────────────────────────────────────────
@@ -1430,45 +1362,30 @@ def delete_task_api(task_id: str):
     return {"ok": True}
 
 
-# ── Tasks: page routes ────────────────────────────────────────────────────────
+# ── Tasks: page routes → Planner ─────────────────────────────────────────────
 
-@app.get("/tasks", response_class=HTMLResponse)
+@app.get("/tasks")
 def tasks_page(
-    request: Request,
     open: Optional[str] = None,
     new: Optional[str] = None,
     due_date: Optional[str] = None,
     experiment_id: Optional[str] = None,
     manuscript_id: Optional[str] = None,
 ):
-    conn = _conn()
-    manuscripts = conn.execute("SELECT id, title FROM manuscript ORDER BY title").fetchall()
-    experiments = conn.execute("SELECT id, name FROM experiment ORDER BY name").fetchall()
-    # Cross-feature deep link: Schedule ("+" on a day) and Experiment detail
-    # ("+ Add task") land here with the new-task drawer pre-opened and
-    # pre-filled, instead of a bare board the user has to configure by hand.
-    new_task_preset = None
+    if open:
+        return RedirectResponse(f"/plan?open=task:{quote(open)}", status_code=307)
     if new or due_date or experiment_id or manuscript_id:
-        new_task_preset = {
-            "due_date": due_date or "",
-            "experiment_id": experiment_id or "",
-            "manuscript_id": manuscript_id or "",
-        }
-    return templates.TemplateResponse(request, "tasks.html", {
-        "manuscripts": [dict(m) for m in manuscripts],
-        "experiments": [dict(e) for e in experiments],
-        "statuses": TASK_STATUSES,
-        "priorities": TASK_PRIORITIES,
-        "open_task_id": open or "",
-        "new_task_preset": new_task_preset,
-    })
+        q = {"new": "task"}
+        if due_date: q["date"] = due_date
+        if experiment_id: q["experiment"] = experiment_id
+        if manuscript_id: q["ms"] = manuscript_id
+        return RedirectResponse("/plan?" + urlencode(q), status_code=307)
+    return RedirectResponse("/plan?view=board", status_code=307)
 
 
 @app.get("/tasks/{task_id}")
 def task_detail_redirect(task_id: str):
-    """Tasks are a single-page board; deep links (e.g. from @mention chips)
-    land here and bounce to the board with that task pre-opened."""
-    return RedirectResponse(f"/tasks?open={task_id}")
+    return RedirectResponse(f"/plan?open=task:{quote(task_id)}", status_code=307)
 
 
 # ── @-mentions: unified search across jfr + RAG entities ────────────────────
@@ -1574,91 +1491,165 @@ def mentions_search_api(q: str = Query(""), limit: int = Query(6, ge=1, le=20)):
     return {"results": results[:40]}
 
 
-@app.get("/schedule", response_class=HTMLResponse)
-def schedule_page(request: Request, month: Optional[str] = None):
-    """month param: YYYY-MM. Defaults to current month."""
-    if not month:
-        month = datetime.now().strftime("%Y-%m")
-    try:
-        y, m = month.split("-"); y, m = int(y), int(m)
-        if not (1 <= m <= 12 and 1 <= y <= 9999):
-            raise ValueError(month)
-    except Exception:
-        raise HTTPException(400, f"bad month {month!r}; expected YYYY-MM")
+@app.get("/schedule")
+def schedule_page(month: Optional[str] = None):
+    return RedirectResponse("/plan?view=month" + (f"&month={quote(month)}" if month else ""), status_code=307)
 
+
+# ── Planner: experiments + tasks + calendar in one place ─────────────────────
+# One normalized item list feeds every view (month, week, board, list). Full
+# edits still go through /api/experiments and /api/tasks; this API adds the
+# cross-cutting moves the views need: reschedule (drag on the calendar) and
+# change column (drag on the board), with the side effects that make the
+# three feel like one system.
+
+_COLUMN_OF = {
+    "task": {"todo": "todo", "in_progress": "doing", "done": "done"},
+    "experiment": {"planned": "todo", "in_progress": "doing", "done": "done",
+                   "failed": "done", "abandoned": "done"},
+}
+_TASK_STATUS_FOR = {"todo": "todo", "doing": "in_progress", "done": "done"}
+_EXP_STATUS_FOR = {"todo": "planned", "doing": "in_progress", "done": "done"}
+
+
+def _exp_date(e: dict) -> Optional[str]:
+    """The day an experiment sits on: when it ran, once it has started;
+    when it is scheduled, while it is still planned."""
+    if e.get("status") != "planned" and e.get("ran_on"):
+        return e["ran_on"]
+    return e.get("scheduled_for") or e.get("ran_on")
+
+
+def _plan_items(conn) -> list[dict]:
+    titles, exp_names = _ms_title_map(conn), _exp_name_map(conn)
+    counts = {r["experiment_id"]: (r["n"], r["open"]) for r in conn.execute(
+        "SELECT experiment_id, COUNT(*) AS n, SUM(status != 'done') AS open FROM task"
+        " WHERE experiment_id IS NOT NULL GROUP BY experiment_id").fetchall()}
+    items = []
+    for r in conn.execute("SELECT * FROM experiment").fetchall():
+        e = _experiment_row_to_dict(r, titles)
+        n, open_n = counts.get(e["id"], (0, 0))
+        items.append({
+            "kind": "experiment", "id": e["id"], "title": e["name"],
+            "date": _exp_date(e), "scheduled_for": e.get("scheduled_for"), "ran_on": e.get("ran_on"),
+            "status": e["status"], "column": _COLUMN_OF["experiment"].get(e["status"], "todo"),
+            "closed": e["status"] in ("done", "failed", "abandoned"),
+            "manuscript_id": e.get("manuscript_id"), "manuscript_title": e.get("manuscript_title"),
+            "tags": e.get("tags") or [], "has_notes": bool((e.get("notes_md") or "").strip()),
+            "note_id": _exp_notes.note_id(e["id"]) if (e.get("notes_md") or "").strip() else None,
+            "objective": e.get("objective") or "",
+            "task_count": n or 0, "open_tasks": open_n or 0,
+            "updated_at": e.get("updated_at"),
+        })
+    for r in conn.execute("SELECT * FROM task").fetchall():
+        t = _task_row_to_dict(r, titles, exp_names)
+        items.append({
+            "kind": "task", "id": t["id"], "title": t["title"],
+            "date": t.get("due_date"), "status": t["status"],
+            "column": _COLUMN_OF["task"].get(t["status"], "todo"),
+            "closed": t["status"] == "done", "priority": t.get("priority") or "normal",
+            "manuscript_id": t.get("manuscript_id"), "manuscript_title": t.get("manuscript_title"),
+            "experiment_id": t.get("experiment_id"), "experiment_name": t.get("experiment_name"),
+            "tags": t.get("tags") or [], "position": t.get("position") or 0,
+            "updated_at": t.get("updated_at"),
+        })
+    return items
+
+
+@app.get("/api/plan/items")
+def plan_items_api():
     conn = _conn()
-    # First + last day of month
-    from calendar import monthrange
-    last_day = monthrange(y, m)[1]
-    first_iso = f"{y:04d}-{m:02d}-01"
-    last_iso  = f"{y:04d}-{m:02d}-{last_day:02d}"
-    rows = conn.execute(
-        "SELECT * FROM experiment"
-        " WHERE scheduled_for IS NOT NULL"
-        "   AND scheduled_for BETWEEN ? AND ?"
-        " ORDER BY scheduled_for ASC",
-        (first_iso, last_iso),
-    ).fetchall()
-    titles = _ms_title_map(conn)
-    expmts = [_experiment_row_to_dict(r, titles) for r in rows]
+    return {"items": _plan_items(conn), "today": datetime.now().strftime("%Y-%m-%d")}
 
-    task_rows = conn.execute(
-        "SELECT * FROM task"
-        " WHERE due_date IS NOT NULL"
-        "   AND due_date BETWEEN ? AND ?"
-        " ORDER BY due_date ASC",
-        (first_iso, last_iso),
-    ).fetchall()
-    exp_names = _exp_name_map(conn)
-    due_tasks = [_task_row_to_dict(r, titles, exp_names) for r in task_rows]
 
-    # Bucket by ISO date — one merged, backend-normalized list per day so the
-    # template doesn't need to interleave two differently-shaped collections.
-    by_day: dict[str, list] = {}
-    for e in expmts:
-        by_day.setdefault(e.get("scheduled_for"), []).append({
-            "kind": "experiment", "id": e["id"], "label": e["name"],
-            "status": e.get("status"), "href": f"/experiments/{e['id']}",
-        })
-    for t in due_tasks:
-        by_day.setdefault(t.get("due_date"), []).append({
-            "kind": "task", "id": t["id"], "label": t["title"],
-            "status": t.get("status"), "href": f"/tasks?open={t['id']}",
-        })
+class PlanMove(BaseModel):
+    date: Optional[str] = None         # YYYY-MM-DD, or null to unschedule
+    column: Optional[str] = None       # todo | doing | done
+    shift_linked: bool = True          # experiments: move open linked tasks too
 
-    # Calendar grid: weeks of (date|None) cells starting on Monday
-    from datetime import date, timedelta
-    first = date(y, m, 1)
-    # back up to Monday of first week
-    grid_start = first - timedelta(days=first.weekday())
-    weeks = []
-    cur = grid_start
-    while True:
-        week = []
-        for _ in range(7):
-            week.append({
-                "iso": cur.strftime("%Y-%m-%d"),
-                "day": cur.day,
-                "in_month": (cur.month == m),
-                "is_today": cur == datetime.now().date(),
-                "items": by_day.get(cur.strftime("%Y-%m-%d"), []),
-            })
-            cur += timedelta(days=1)
-        weeks.append(week)
-        if cur.month != m and cur > date(y, m, last_day):
-            break
 
-    # Prev/next month
-    prev_y, prev_m = (y - 1, 12) if m == 1 else (y, m - 1)
-    next_y, next_m = (y + 1, 1) if m == 12 else (y, m + 1)
-    label = first.strftime("%B %Y")
+def _valid_day(d: Optional[str]) -> Optional[str]:
+    if d is None:
+        return None
+    try:
+        return datetime.strptime(d, "%Y-%m-%d").strftime("%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(422, f"bad date {d!r}; expected YYYY-MM-DD")
 
-    return templates.TemplateResponse(request, "schedule.html", {
-        "weeks": weeks,
-        "month": month,
-        "month_label": label,
-        "prev_month": f"{prev_y:04d}-{prev_m:02d}",
-        "next_month": f"{next_y:04d}-{next_m:02d}",
-        "experiment_count": len(expmts),
-        "task_count": len(due_tasks),
+
+@app.patch("/api/plan/{kind}/{item_id}")
+def plan_move_api(kind: str, item_id: str, body: PlanMove):
+    """Drag-and-drop moves. Only the fields present in the request change."""
+    if kind not in ("task", "experiment"):
+        raise HTTPException(404, "unknown kind")
+    fields = body.model_fields_set
+    if body.column is not None and body.column not in _TASK_STATUS_FOR:
+        raise HTTPException(422, f"bad column {body.column!r}")
+    conn = _conn()
+    now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+    today = datetime.now().strftime("%Y-%m-%d")
+    moved_tasks = 0
+
+    if kind == "task":
+        row = conn.execute("SELECT * FROM task WHERE id=?", (item_id,)).fetchone()
+        if not row:
+            raise HTTPException(404, "task not found")
+        due, status, completed = row["due_date"], row["status"], row["completed_at"]
+        if "date" in fields:
+            due = _valid_day(body.date)
+        if body.column:
+            new_status = _TASK_STATUS_FOR[body.column]
+            if new_status == "done" and status != "done":
+                completed = now
+            elif new_status != "done":
+                completed = None
+            status = new_status
+        conn.execute("UPDATE task SET due_date=?, status=?, completed_at=?, updated_at=? WHERE id=?",
+                     (due, status, completed, now, item_id))
+    else:
+        row = conn.execute("SELECT * FROM experiment WHERE id=?", (item_id,)).fetchone()
+        if not row:
+            raise HTTPException(404, "experiment not found")
+        e = dict(row)
+        old_day = _exp_date(e)
+        if "date" in fields:
+            day = _valid_day(body.date)
+            # Started/finished experiments move their run date; planned ones
+            # move their schedule.
+            if e["status"] != "planned" and e.get("ran_on"):
+                e["ran_on"] = day
+            else:
+                e["scheduled_for"] = day
+            # Prep and follow-up tasks travel with the experiment: shift every
+            # open linked task that has a due date by the same number of days.
+            if body.shift_linked and old_day and day and old_day != day:
+                delta = (datetime.strptime(day, "%Y-%m-%d") - datetime.strptime(old_day, "%Y-%m-%d")).days
+                for t in conn.execute("SELECT id, due_date FROM task WHERE experiment_id=? AND status != 'done'"
+                                      " AND due_date IS NOT NULL", (item_id,)).fetchall():
+                    nd = (datetime.strptime(t["due_date"], "%Y-%m-%d") + timedelta(days=delta)).strftime("%Y-%m-%d")
+                    conn.execute("UPDATE task SET due_date=?, updated_at=? WHERE id=?", (nd, now, t["id"]))
+                    moved_tasks += 1
+        if body.column:
+            target = _EXP_STATUS_FOR[body.column]
+            # Failed/abandoned already count as "done" on the board — keep them.
+            if not (target == "done" and e["status"] in ("failed", "abandoned")):
+                e["status"] = target
+            # Starting or finishing a run records when it happened.
+            if e["status"] in ("in_progress", "done") and not e.get("ran_on"):
+                e["ran_on"] = e.get("scheduled_for") if (e.get("scheduled_for") or "9") <= today else today
+        conn.execute("UPDATE experiment SET scheduled_for=?, ran_on=?, status=?, updated_at=? WHERE id=?",
+                     (e["scheduled_for"], e["ran_on"], e["status"], now, item_id))
+    conn.commit()
+    item = next((i for i in _plan_items(conn) if i["kind"] == kind and i["id"] == item_id), None)
+    return {"item": item, "moved_tasks": moved_tasks}
+
+
+@app.get("/plan", response_class=HTMLResponse)
+def planner_page(request: Request):
+    conn = _conn()
+    manuscripts = conn.execute("SELECT id, title FROM manuscript ORDER BY title").fetchall()
+    return templates.TemplateResponse(request, "planner.html", {
+        "manuscripts": [dict(m) for m in manuscripts],
+        "experiment_statuses": EXPERIMENT_STATUSES,
+        "task_priorities": TASK_PRIORITIES,
     })

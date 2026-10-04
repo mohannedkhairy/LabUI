@@ -1,0 +1,1049 @@
+{% extends "base.html" %}
+{% block title %}Planner{% endblock %}
+{% block heading %}Planner{% endblock %}
+{% block subtitle %}<span id="plan-summary">Experiments, tasks and dates — one place</span>{% endblock %}
+{% block header_actions %}
+  <button onclick="openNew('task')" class="toolbar-btn">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+    New task
+  </button>
+  <button onclick="openNew('experiment')" class="toolbar-btn btn-signal">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+    New experiment
+  </button>
+{% endblock %}
+
+{% block head %}
+<style>
+  /* ── Toolbar ───────────────────────────────────────────────────────── */
+  .pl-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+  .pl-bar .seg { width: auto; }
+  .pl-bar .seg button { flex: none; padding: 5px 12px; font-size: 12.5px; white-space: nowrap; }
+  .pl-nav { display: flex; align-items: center; gap: 4px; }
+  .pl-nav button.arrow { width: 28px; height: 28px; border-radius: var(--radius-sm); color: var(--ink-muted);
+                         border: 1px solid var(--line); background: var(--raised); }
+  .pl-nav button.arrow:hover { border-color: var(--line-firm); color: var(--ink); }
+  .pl-label { font-family: var(--font-display); font-size: 17px; font-weight: 600; color: var(--ink);
+              min-width: 150px; text-align: center; }
+  .fchip { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; padding: 4px 10px;
+           border-radius: 999px; border: 1px solid var(--line); background: var(--raised); color: var(--ink-faint);
+           transition: all .15s ease; }
+  .fchip.on { color: var(--ink); border-color: var(--line-firm); background: var(--sunken); }
+  .fchip .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; opacity: .35; }
+  .fchip.on .dot { opacity: 1; }
+  .fchip[data-filter="experiment"].on .dot { background: var(--signal); }
+  .fchip[data-filter="task"].on .dot { background: var(--data); }
+
+  /* ── Quick add ─────────────────────────────────────────────────────── */
+  .pl-quick { display: flex; align-items: center; gap: 8px; padding: 7px 8px 7px 12px; margin-bottom: 14px; }
+  .pl-quick input { flex: 1; min-width: 0; background: transparent; outline: none; font-size: 14px; color: var(--ink); padding: 4px 0; }
+  .kind-toggle { display: inline-flex; border: 1px solid var(--line); border-radius: var(--radius-sm); overflow: hidden; flex-shrink: 0; }
+  .kind-toggle button { font-size: 11.5px; padding: 4px 9px; color: var(--ink-faint); background: var(--raised); }
+  .kind-toggle button.on { background: var(--sunken); color: var(--ink); font-weight: 600; }
+  .date-hint { font-family: var(--font-mono); font-size: 11px; color: var(--data); white-space: nowrap; }
+
+  /* ── Layout ────────────────────────────────────────────────────────── */
+  .pl-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
+  @media (min-width: 1180px) { .pl-body.with-rail { grid-template-columns: minmax(0, 1fr) 260px; } }
+  .pl-rail { display: none; }
+  @media (min-width: 1180px) { .with-rail .pl-rail { display: block; position: sticky; top: 110px; } }
+
+  /* ── Item pills (calendar) and cards (board / week / list) ─────────── */
+  .pill { display: flex; align-items: flex-start; gap: 5px; width: 100%; text-align: left; font-size: 11.5px; line-height: 1.3;
+          padding: 3px 6px; border-radius: 5px; cursor: pointer; color: var(--ink); border: 1px solid transparent; overflow: hidden; }
+  .pill .kicon, .pill .check, .pill .sdot { margin-top: 1.5px; }
+  /* Two lines before truncating — calendar cells are narrow. */
+  .pill .t { min-width: 0; flex: 1; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+             word-break: break-word; }
+  .pill.experiment { background: var(--signal-wash); border-color: color-mix(in srgb, var(--signal) 22%, transparent); }
+  .pill.task { background: color-mix(in srgb, var(--data-wash) 70%, var(--raised)); }
+  .pill.closed { opacity: .55; }
+  .pill.closed .t { text-decoration: line-through; }
+  .pill:hover { border-color: var(--line-firm); }
+  .pill.overdue .t { color: var(--danger); }
+  .kicon { flex-shrink: 0; width: 13px; height: 13px; display: inline-flex; align-items: center; justify-content: center; }
+  .check { width: 13px; height: 13px; border-radius: 3.5px; border: 1.5px solid var(--ink-faint); flex-shrink: 0;
+           display: inline-flex; align-items: center; justify-content: center; background: var(--raised); }
+  .check.on { background: var(--data); border-color: var(--data); }
+  .check.on::after { content: ''; width: 6px; height: 3.5px; border: 1.6px solid #fff; border-top: 0; border-right: 0;
+                     transform: rotate(-45deg) translate(0.5px, -0.5px); }
+  .sdot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--ink-faint); }
+  .sdot.planned { background: transparent; border: 1.5px solid var(--signal); }
+  .sdot.in_progress { background: var(--warn); }
+  .sdot.done { background: var(--data); }
+  .sdot.failed { background: var(--danger); }
+  .sdot.abandoned { background: var(--ink-faint); }
+  .prio-high { box-shadow: inset 2px 0 0 var(--danger); }
+
+  .card { display: block; width: 100%; text-align: left; background: var(--raised); border: 1px solid var(--line);
+          border-radius: var(--radius-sm); padding: 9px 11px; cursor: pointer;
+          transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease; }
+  .card:hover { border-color: var(--line-firm); box-shadow: 0 6px 16px -10px rgba(0,0,0,.25); }
+  .card.experiment { border-left: 3px solid var(--signal); }
+  .card.task { border-left: 3px solid color-mix(in srgb, var(--data) 70%, transparent); }
+  .card.closed { opacity: .6; }
+  .card .ttl { font-size: 13px; font-weight: 500; color: var(--ink); line-height: 1.35; display: flex; gap: 7px; align-items: flex-start; }
+  .card .meta { display: flex; flex-wrap: wrap; gap: 4px 8px; margin-top: 6px; font-size: 11px; color: var(--ink-faint); }
+  .card .meta .ctx { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .card.closed .ttl span.t { text-decoration: line-through; }
+  .datechip { font-family: var(--font-mono); font-size: 10.5px; }
+  .datechip.overdue { color: var(--danger); font-weight: 600; }
+  .datechip.today { color: var(--signal); font-weight: 600; }
+
+  [draggable="true"] { -webkit-user-drag: element; }
+  .dragging { opacity: .35; }
+  .drop-on { outline: 2px dashed var(--signal); outline-offset: -2px; background: var(--signal-wash) !important; }
+
+  /* ── Month ─────────────────────────────────────────────────────────── */
+  .month { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+  .month .dow { font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase;
+                color: var(--ink-faint); padding: 8px 8px; border-bottom: 1px solid var(--line); background: var(--sunken); }
+  .mcell { min-height: 118px; padding: 6px 6px 8px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line);
+           display: flex; flex-direction: column; gap: 3px; position: relative; transition: background-color .15s ease; }
+  .mcell:nth-child(7n+7) { border-right: 0; }
+  .mcell.out { background: color-mix(in srgb, var(--sunken) 55%, transparent); }
+  .mcell.out .dn { color: var(--ink-faint); opacity: .6; }
+  .mcell.weekend:not(.out) { background: color-mix(in srgb, var(--sunken) 30%, transparent); }
+  .mcell .dhead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1px; }
+  .mcell .dn { font-size: 12px; font-weight: 600; color: var(--ink-muted); width: 22px; height: 22px; border-radius: 50%;
+               display: inline-flex; align-items: center; justify-content: center; font-variant-numeric: tabular-nums; }
+  .mcell.today .dn { background: var(--signal); color: #fff; }
+  .mcell .add { opacity: 0; color: var(--ink-faint); width: 20px; height: 20px; border-radius: 4px; font-size: 15px; line-height: 1; }
+  .mcell:hover .add { opacity: 1; }
+  .mcell .add:hover { color: var(--signal); background: var(--sunken); }
+  .mcell .more { font-size: 10.5px; color: var(--ink-faint); text-align: left; padding-left: 4px; }
+  .mcell .more:hover { color: var(--signal); }
+  @media (max-width: 760px) {
+    .mcell { min-height: 74px; padding: 3px; }
+    .pill { font-size: 10px; padding: 2px 3px; }
+    .pill .kicon, .pill .check, .pill .sdot { display: none; }
+  }
+
+  /* ── Week ──────────────────────────────────────────────────────────── */
+  .week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; }
+  @media (max-width: 1000px) { .week { grid-template-columns: minmax(0, 1fr); } }
+  .wday { background: var(--raised); border: 1px solid var(--line); border-radius: var(--radius); min-height: 340px;
+          display: flex; flex-direction: column; }
+  .wday.today { border-color: var(--signal); }
+  .wday .whead { padding: 9px 10px 7px; border-bottom: 1px solid var(--line); display: flex; align-items: baseline; gap: 6px; }
+  .wday .whead .wd { font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-faint); }
+  .wday .whead .wn { font-family: var(--font-display); font-size: 19px; font-weight: 600; color: var(--ink); }
+  .wday.today .whead .wn { color: var(--signal); }
+  .wday .wbody { padding: 8px; display: flex; flex-direction: column; gap: 6px; flex: 1; }
+  .wday .wadd { margin-top: auto; font-size: 11.5px; color: var(--ink-faint); text-align: left; padding: 4px 2px; }
+  .wday .wadd:hover { color: var(--signal); }
+
+  /* ── Board ─────────────────────────────────────────────────────────── */
+  .board { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+  @media (max-width: 900px) { .board { grid-template-columns: minmax(0, 1fr); } }
+  .col { background: color-mix(in srgb, var(--sunken) 70%, transparent); border: 1px solid var(--line); border-radius: var(--radius);
+         display: flex; flex-direction: column; min-height: 420px; }
+  .col .chead { display: flex; align-items: center; gap: 8px; padding: 11px 13px 9px; }
+  .col .chead .n { font-family: var(--font-mono); font-size: 11px; color: var(--ink-faint); margin-left: auto; }
+  .col .cbody { padding: 0 9px 10px; display: flex; flex-direction: column; gap: 7px; flex: 1; }
+
+  /* ── List ──────────────────────────────────────────────────────────── */
+  .lgroup { margin-bottom: 18px; }
+  .lgroup h3 { display: flex; align-items: baseline; gap: 8px; margin: 0 0 6px; }
+  .lrow { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-bottom: 1px solid var(--line); cursor: pointer;
+          background: var(--raised); }
+  .lrow:first-child { border-top-left-radius: var(--radius); border-top-right-radius: var(--radius); }
+  .lrow:last-child { border-bottom: 0; border-bottom-left-radius: var(--radius); border-bottom-right-radius: var(--radius); }
+  .lrow:hover { background: var(--sunken); }
+  .lrow .t { flex: 1; min-width: 0; font-size: 13.5px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lrow.closed .t { text-decoration: line-through; color: var(--ink-faint); }
+  .lrow .ctx { font-size: 11.5px; color: var(--ink-faint); max-width: 34%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .kind-tag { font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; padding: 1px 6px;
+              border-radius: 4px; flex-shrink: 0; }
+  .kind-tag.experiment { color: var(--signal-ink); background: var(--signal-wash); }
+  .kind-tag.task { color: var(--data); background: var(--data-wash); }
+
+  /* ── Rail ──────────────────────────────────────────────────────────── */
+  .rail-box { background: var(--raised); border: 1px solid var(--line); border-radius: var(--radius); margin-bottom: 12px; }
+  .rail-box .rh { padding: 10px 12px 6px; display: flex; align-items: baseline; justify-content: space-between; }
+  .rail-box .rb { padding: 0 8px 9px; display: flex; flex-direction: column; gap: 4px; max-height: 42vh; overflow-y: auto; }
+  .rail-box .empty { font-size: 11.5px; color: var(--ink-faint); padding: 4px 4px 2px; }
+
+  /* ── Drawer ────────────────────────────────────────────────────────── */
+  #pl-scrim { position: fixed; inset: 0; z-index: 70; background: color-mix(in srgb, var(--ground) 55%, transparent);
+              backdrop-filter: blur(1.5px); opacity: 0; pointer-events: none; transition: opacity .2s ease; }
+  #pl-scrim.open { opacity: 1; pointer-events: auto; }
+  #pl-drawer { position: fixed; top: 10px; right: 10px; bottom: 10px; z-index: 71; width: min(580px, calc(100vw - 20px));
+               background: var(--surface); border: 1px solid var(--line-firm); border-radius: 14px;
+               box-shadow: 0 30px 80px -30px rgba(0,0,0,.45); display: flex; flex-direction: column;
+               transform: translateX(calc(100% + 24px)); transition: transform .26s cubic-bezier(.22,1,.36,1); }
+  #pl-drawer.open { transform: none; }
+  .dw-head { padding: 14px 16px 10px; border-bottom: 1px solid var(--line); }
+  .dw-title { width: 100%; background: transparent; outline: none; font-family: var(--font-display); font-size: 21px;
+              font-weight: 600; line-height: 1.25; color: var(--ink); resize: none; overflow: hidden; }
+  .dw-body { flex: 1; overflow-y: auto; padding: 14px 16px 20px; }
+  .dw-foot { padding: 10px 16px; border-top: 1px solid var(--line); display: flex; align-items: center; gap: 8px; }
+  .prop { display: grid; grid-template-columns: 112px minmax(0, 1fr); align-items: center; gap: 6px 10px; margin-bottom: 8px; }
+  .prop > label { font-size: 12px; color: var(--ink-faint); }
+  .prop .field { padding: 5px 8px; font-size: 13px; }
+  .dw-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); margin: 14px 0 12px; overflow-x: auto; }
+  .dw-tabs button { font-size: 12.5px; padding: 7px 11px; color: var(--ink-muted); border-bottom: 2px solid transparent;
+                    margin-bottom: -1px; white-space: nowrap; }
+  .dw-tabs button.on { color: var(--ink); font-weight: 600; border-bottom-color: var(--signal); }
+  .dw-tabs .n { font-family: var(--font-mono); font-size: 10.5px; color: var(--ink-faint); margin-left: 3px; }
+  .fl { display: block; font-size: 11.5px; color: var(--ink-faint); margin: 12px 0 5px; }
+  .fl:first-child { margin-top: 0; }
+  textarea.field { resize: vertical; line-height: 1.55; }
+  .sync-note { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--data); background: var(--data-wash);
+               border: 1px solid color-mix(in srgb, var(--data) 25%, transparent); border-radius: var(--radius-sm);
+               padding: 7px 10px; margin-bottom: 10px; }
+  .subtask { display: flex; align-items: center; gap: 9px; padding: 7px 4px; border-bottom: 1px solid var(--line); font-size: 13px; }
+  .subtask .t { flex: 1; min-width: 0; cursor: pointer; color: var(--ink); }
+  .subtask.closed .t { text-decoration: line-through; color: var(--ink-faint); }
+  .cond-row { display: grid; grid-template-columns: 1fr 1fr 26px; gap: 6px; margin-bottom: 6px; }
+  .paper-row { display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px; border: 1px solid var(--line);
+               border-radius: var(--radius-sm); margin-bottom: 6px; background: var(--raised); }
+  .x-btn { color: var(--ink-faint); font-size: 16px; line-height: 1; padding: 2px 6px; border-radius: 4px; }
+  .x-btn:hover { color: var(--danger); background: var(--sunken); }
+  .seg-sm button { font-size: 12px; padding: 4px 8px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Toolbar -->
+<div class="pl-bar">
+  <div class="seg" role="tablist" aria-label="View">
+    <button data-view="month">Month</button>
+    <button data-view="week">Week</button>
+    <button data-view="board">Board</button>
+    <button data-view="list">List</button>
+  </div>
+  <div class="pl-nav" id="pl-nav">
+    <button class="arrow" onclick="step(-1)" aria-label="Previous">‹</button>
+    <span class="pl-label" id="pl-label">—</span>
+    <button class="arrow" onclick="step(1)" aria-label="Next">›</button>
+    <button class="toolbar-btn" onclick="goToday()" style="margin-left: 4px">Today</button>
+  </div>
+  <div class="flex-1"></div>
+  <div class="flex items-center gap-1.5 flex-wrap">
+    <button class="fchip" data-filter="experiment"><span class="dot"></span>Experiments</button>
+    <button class="fchip" data-filter="task"><span class="dot"></span>Tasks</button>
+    <button class="fchip" data-filter="done"><span class="dot"></span>Done</button>
+    <select id="f-ms" class="field" style="width: auto; padding: 4px 8px; font-size: 12px;" title="Filter by manuscript">
+      <option value="">All manuscripts</option>
+      {% for m in manuscripts %}<option value="{{ m.id }}">{{ m.title[:48] }}</option>{% endfor %}
+    </select>
+    <input id="f-q" type="search" class="field" placeholder="Search" style="width: 150px; padding: 4px 9px; font-size: 12px;">
+  </div>
+</div>
+
+<!-- Quick add -->
+<div class="tile pl-quick">
+  <div class="kind-toggle" role="group" aria-label="Add as">
+    <button data-qkind="task">Task</button>
+    <button data-qkind="experiment">Experiment</button>
+  </div>
+  <input id="quick" type="text" autocomplete="off" placeholder="Add a task — try “Order NaCl tomorrow” or “DLS run 3 on fri”">
+  <span id="quick-date" class="date-hint"></span>
+  <button class="toolbar-btn btn-signal" onclick="quickAdd()">Add</button>
+</div>
+
+<div class="pl-body" id="pl-body">
+  <section id="pl-main"><div class="text-sm py-12 text-center" style="color: var(--ink-faint)">Loading…</div></section>
+  <aside class="pl-rail" id="pl-rail">
+    <div class="rail-box" data-drop-date="">
+      <div class="rh"><span class="eyebrow">Unscheduled</span><span class="font-mono text-[11px]" id="n-unsched" style="color: var(--ink-faint)"></span></div>
+      <div class="rb" id="rail-unsched"></div>
+    </div>
+    <div class="rail-box">
+      <div class="rh"><span class="eyebrow" style="color: var(--danger)">Overdue</span><span class="font-mono text-[11px]" id="n-overdue" style="color: var(--ink-faint)"></span></div>
+      <div class="rb" id="rail-overdue"></div>
+    </div>
+    <p class="text-[11px] px-1 leading-relaxed" style="color: var(--ink-faint)">Drag anything onto a day to schedule it, or back here to unschedule. Moving an experiment moves its open tasks with it.</p>
+  </aside>
+</div>
+
+<!-- Drawer -->
+<div id="pl-scrim" onclick="closeDrawer()"></div>
+<aside id="pl-drawer" role="dialog" aria-modal="true" aria-label="Item details" aria-hidden="true">
+  <div class="dw-head">
+    <div class="flex items-center gap-2 mb-2">
+      <span id="dw-kind" class="kind-tag"></span>
+      <span id="dw-newkind" class="kind-toggle" style="display: none">
+        <button data-dkind="task">Task</button><button data-dkind="experiment">Experiment</button>
+      </span>
+      <span class="flex-1"></span>
+      <span id="dw-status" class="text-[11px]" style="color: var(--ink-faint)"></span>
+      <button class="x-btn" onclick="closeDrawer()" aria-label="Close" title="Close (Esc)">×</button>
+    </div>
+    <textarea id="dw-title" class="dw-title" rows="1" placeholder="Title"></textarea>
+  </div>
+  <div class="dw-body" id="dw-body"></div>
+  <div class="dw-foot" id="dw-foot"></div>
+</aside>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ══════════════════════════════════════════════════════════════════════════
+// Planner — one item list (experiments + tasks) rendered four ways.
+// Data: GET /api/plan/items; drag moves: PATCH /api/plan/{kind}/{id};
+// full edits: /api/experiments and /api/tasks.
+// ══════════════════════════════════════════════════════════════════════════
+const MANUSCRIPTS = {{ manuscripts | tojson }};
+const EXP_STATUSES = {{ experiment_statuses | tojson }};
+const STATUS_LABEL = { planned: 'Planned', in_progress: 'Running', done: 'Done', failed: 'Failed', abandoned: 'Abandoned',
+                       todo: 'To do' };
+const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const PLS = { get(k, d) { try { return localStorage.getItem(k) ?? d; } catch (e) { return d; } },
+             set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} } };
+
+let items = [], TODAY = isoDay(new Date());
+let state = {
+  view: PLS.get('labui-plan-view', 'month'),
+  anchor: TODAY,                         // any day inside the shown month/week
+  kinds: new Set(['experiment', 'task']),
+  showDone: PLS.get('labui-plan-done', '1') === '1',
+  ms: '', q: '',
+  quickKind: 'task',
+  expanded: new Set(),                   // month cells showing all items
+};
+
+// ── Dates ────────────────────────────────────────────────────────────────
+function isoDay(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+function parseDay(s) { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); }
+function addDays(s, n) { const d = parseDay(s); d.setDate(d.getDate() + n); return isoDay(d); }
+function mondayOf(s) { const d = parseDay(s); const wd = (d.getDay() + 6) % 7; d.setDate(d.getDate() - wd); return isoDay(d); }
+function fmtShort(s) { return parseDay(s).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }); }
+function relDay(s) {
+  if (!s) return '';
+  const diff = Math.round((parseDay(s) - parseDay(TODAY)) / 86400000);
+  if (diff === 0) return 'Today';
+  if (diff === 1) return 'Tomorrow';
+  if (diff === -1) return 'Yesterday';
+  if (diff > 1 && diff < 7) return parseDay(s).toLocaleDateString(undefined, { weekday: 'short' });
+  return fmtShort(s);
+}
+// Overdue = a task not done, or an experiment still only planned, whose day has passed.
+// A running experiment sits on the day it started; that is not overdue.
+function isOverdue(it) { return !!it.date && !it.closed && it.date < TODAY && (it.kind === 'task' || it.status === 'planned'); }
+
+// Natural-language date in quick add: today, tomorrow, (on) fri, in 3 days,
+// next week, 2026-10-14, 14 oct, oct 14. Returns { title, date }.
+const WD = { sun: 0, mon: 1, tue: 2, tues: 2, wed: 3, thu: 4, thur: 4, thurs: 4, fri: 5, sat: 6,
+             sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
+const MON = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, sept: 8, oct: 9, nov: 10, dec: 11 };
+function parseQuick(text) {
+  let t = ' ' + text + ' ', date = null;
+  const take = (re, fn) => {
+    if (date) return;
+    const m = t.match(re);
+    if (!m) return;
+    const d = fn(m);
+    if (d) { date = d; t = t.replace(m[0], ' '); }
+  };
+  const pre = '(?:\\s(?:on|by|due|for))?';
+  take(new RegExp(pre + '\\s(today|tonight)\\b', 'i'), () => TODAY);
+  take(new RegExp(pre + '\\s(tomorrow|tmrw?)\\b', 'i'), () => addDays(TODAY, 1));
+  take(new RegExp(pre + '\\sin\\s(\\d{1,3})\\s(day|days|week|weeks)\\b', 'i'),
+       m => addDays(TODAY, Number(m[1]) * (/week/i.test(m[2]) ? 7 : 1)));
+  take(new RegExp(pre + '\\snext\\sweek\\b', 'i'), () => addDays(mondayOf(TODAY), 7));
+  take(new RegExp(pre + '\\s(\\d{4})-(\\d{2})-(\\d{2})\\b'), m => `${m[1]}-${m[2]}-${m[3]}`);
+  take(new RegExp(pre + '\\s(\\d{1,2})\\s([a-z]{3,9})\\b', 'i'), m => monthDay(m[2], m[1]));
+  take(new RegExp(pre + '\\s([a-z]{3,9})\\s(\\d{1,2})\\b', 'i'), m => monthDay(m[1], m[2]));
+  take(new RegExp(pre + '\\s(?:next\\s)?(sun|mon|tues?|wed|thu(?:rs?)?|fri|sat|sunday|monday|tuesday|wednesday|thursday|friday|saturday)\\b', 'i'),
+       m => { const target = WD[m[1].toLowerCase()]; const d = parseDay(TODAY);
+              let n = (target - d.getDay() + 7) % 7; if (n === 0) n = 7; return addDays(TODAY, n); });
+  return { title: t.replace(/\s+/g, ' ').trim(), date };
+}
+function monthDay(mon, day) {
+  const mi = MON[mon.toLowerCase().slice(0, mon.length > 3 && mon.toLowerCase().startsWith('sept') ? 4 : 3)];
+  const d = Number(day);
+  if (mi === undefined || !(d >= 1 && d <= 31)) return null;
+  const now = parseDay(TODAY);
+  let y = now.getFullYear();
+  const cand = new Date(y, mi, d);
+  if (cand < new Date(now.getFullYear(), now.getMonth(), now.getDate() - 30)) y += 1;   // "3 jan" in December → next year
+  return isoDay(new Date(y, mi, d));
+}
+
+// ── Data ─────────────────────────────────────────────────────────────────
+async function load() {
+  try {
+    const r = await fetch('/api/plan/items');
+    const d = await r.json();
+    items = d.items || []; TODAY = d.today || TODAY;
+  } catch (e) {
+    document.getElementById('pl-main').innerHTML = `<div class="text-sm py-8" style="color: var(--danger)">Could not load the planner: ${esc(e.message)}</div>`;
+    return;
+  }
+  render();
+}
+function itemKey(it) { return it.kind + ':' + it.id; }
+function findItem(kind, id) { return items.find(i => i.kind === kind && i.id === id); }
+function visible() {
+  const q = state.q.toLowerCase();
+  return items.filter(it =>
+    state.kinds.has(it.kind) && (state.showDone || !it.closed) &&
+    (!state.ms || it.manuscript_id === state.ms) &&
+    (!q || [it.title, it.experiment_name, it.manuscript_title, ...(it.tags || [])].join(' ').toLowerCase().includes(q)));
+}
+function sortItems(list) {
+  return list.slice().sort((a, b) =>
+    (a.closed - b.closed) || (a.kind === b.kind ? 0 : a.kind === 'experiment' ? -1 : 1) ||
+    ((b.priority === 'high') - (a.priority === 'high')) || a.title.localeCompare(b.title));
+}
+
+async function move(kind, id, patch) {
+  try {
+    const r = await fetch(`/api/plan/${kind}/${encodeURIComponent(id)}`, {
+      method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(patch) });
+    if (!r.ok) throw new Error((await r.json()).detail || 'HTTP ' + r.status);
+    const d = await r.json();
+    if (d.moved_tasks) toast(`Moved ${d.moved_tasks} linked task${d.moved_tasks === 1 ? '' : 's'} with it`);
+    await load();
+    // Refresh an open drawer — the item itself, or an experiment whose task
+    // checklist just changed.
+    if (drawerItem && drawerItem.id) {
+      if (dirty) await saveNow();
+      await openItem(drawerItem.kind, drawerItem.id, true);
+    }
+  } catch (e) { toast('Could not update: ' + e.message); }
+}
+
+// ── Rendering ────────────────────────────────────────────────────────────
+function render() {
+  document.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('on', b.dataset.view === state.view));
+  document.querySelectorAll('[data-filter]').forEach(b => b.classList.toggle('on',
+    b.dataset.filter === 'done' ? state.showDone : state.kinds.has(b.dataset.filter)));
+  document.querySelectorAll('[data-qkind]').forEach(b => b.classList.toggle('on', b.dataset.qkind === state.quickKind));
+  document.getElementById('quick').placeholder = state.quickKind === 'task'
+    ? 'Add a task — try “Order NaCl tomorrow” or “Calibrate DLS on fri”'
+    : 'Add an experiment — try “DLS run 3 on fri” or “NTA, 100 mM NaCl in 2 weeks”';
+  const calendar = state.view === 'month' || state.view === 'week';
+  document.getElementById('pl-nav').style.display = calendar ? '' : 'none';
+  document.getElementById('pl-body').classList.toggle('with-rail', calendar);
+
+  const exps = items.filter(i => i.kind === 'experiment'), tasks = items.filter(i => i.kind === 'task');
+  const open = tasks.filter(t => !t.closed).length, overdue = items.filter(isOverdue).length;
+  document.getElementById('plan-summary').textContent = items.length
+    ? `${exps.filter(e => !e.closed).length} experiments in flight · ${open} open tasks` + (overdue ? ` · ${overdue} overdue` : '')
+    : 'Experiments, tasks and dates — one place';
+
+  const main = document.getElementById('pl-main');
+  const vis = visible();
+  if (state.view === 'month') main.innerHTML = renderMonth(vis);
+  else if (state.view === 'week') main.innerHTML = renderWeek(vis);
+  else if (state.view === 'board') main.innerHTML = renderBoard(vis);
+  else main.innerHTML = renderList(vis);
+  if (calendar) renderRail(vis);
+}
+
+function kindIcon(it) {
+  if (it.kind === 'experiment') return `<span class="kicon" title="Experiment">${FLASK}</span>`;
+  return `<span class="check ${it.closed ? 'on' : ''}" data-toggle="${esc(itemKey(it))}" role="checkbox" aria-checked="${it.closed}" title="Mark ${it.closed ? 'not done' : 'done'}"></span>`;
+}
+const FLASK = '<svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="color: var(--signal)"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M9 3h6M10 3v6.5L4.6 18.2A1.8 1.8 0 006.1 21h11.8a1.8 1.8 0 001.5-2.8L14 9.5V3"/></svg>';
+
+function pill(it) {
+  const cls = ['pill', it.kind, it.closed ? 'closed' : '', isOverdue(it) ? 'overdue' : '', it.priority === 'high' ? 'prio-high' : ''].join(' ');
+  return `<div class="${cls}" draggable="true" data-item="${esc(itemKey(it))}" title="${esc(it.title)}${it.experiment_name ? ' · ' + esc(it.experiment_name) : ''}">
+    ${kindIcon(it)}${it.kind === 'experiment' ? `<span class="sdot ${it.status}" title="${STATUS_LABEL[it.status] || it.status}"></span>` : ''}
+    <span class="t">${esc(it.title)}</span></div>`;
+}
+
+function card(it, opts = {}) {
+  const meta = [];
+  if (it.date && !opts.noDate) {
+    const c = isOverdue(it) ? 'overdue' : (it.date === TODAY ? 'today' : '');
+    meta.push(`<span class="datechip ${c}">${esc(relDay(it.date))}</span>`);
+  }
+  if (it.kind === 'experiment') {
+    meta.push(`<span>${STATUS_LABEL[it.status] || it.status}</span>`);
+    if (it.task_count) meta.push(`<span title="Linked tasks">☐ ${it.task_count - it.open_tasks}/${it.task_count}</span>`);
+    if (it.has_notes) meta.push(`<span title="Has notes — also in Notes">✎ notes</span>`);
+  }
+  if (it.experiment_name) meta.push(`<span class="ctx">🧪 ${esc(it.experiment_name)}</span>`);
+  if (it.manuscript_title) meta.push(`<span class="ctx">📄 ${esc(it.manuscript_title)}</span>`);
+  if (it.priority === 'high' && !it.closed) meta.push(`<span style="color: var(--danger)">high</span>`);
+  return `<div class="card ${it.kind} ${it.closed ? 'closed' : ''}" draggable="true" data-item="${esc(itemKey(it))}">
+    <div class="ttl">${kindIcon(it)}${it.kind === 'experiment' ? `<span class="sdot ${it.status}" style="margin-top:4px"></span>` : ''}<span class="t">${esc(it.title)}</span></div>
+    ${meta.length ? `<div class="meta">${meta.join('')}</div>` : ''}</div>`;
+}
+
+function byDate(vis) {
+  const m = {};
+  for (const it of vis) if (it.date) (m[it.date] = m[it.date] || []).push(it);
+  return m;
+}
+
+function renderMonth(vis) {
+  const a = parseDay(state.anchor);
+  const first = isoDay(new Date(a.getFullYear(), a.getMonth(), 1));
+  document.getElementById('pl-label').textContent = a.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+  const start = mondayOf(first), month = a.getMonth(), days = byDate(vis);
+  let cells = DOW.map(d => `<div class="dow">${d}</div>`).join('');
+  let d = start;
+  for (let i = 0; i < 42; i++) {
+    const dd = parseDay(d);
+    if (i >= 35 && dd.getMonth() !== month) break;
+    const list = sortItems(days[d] || []);
+    const expanded = state.expanded.has(d);
+    const shown = expanded ? list : list.slice(0, 4);
+    const wd = (dd.getDay() + 6) % 7;
+    cells += `<div class="mcell ${dd.getMonth() !== month ? 'out' : ''} ${d === TODAY ? 'today' : ''} ${wd >= 5 ? 'weekend' : ''}" data-drop-date="${d}">
+      <div class="dhead"><span class="dn">${dd.getDate()}</span>
+        <button class="add" data-add-date="${d}" title="Add on ${fmtShort(d)}" aria-label="Add on ${fmtShort(d)}">+</button></div>
+      ${shown.map(pill).join('')}
+      ${list.length > 4 ? `<button class="more" data-expand="${d}">${expanded ? 'Show less' : '+' + (list.length - 4) + ' more'}</button>` : ''}
+    </div>`;
+    d = addDays(d, 1);
+  }
+  return `<div class="tile tile-flush overflow-hidden"><div class="month">${cells}</div></div>`;
+}
+
+function renderWeek(vis) {
+  const start = mondayOf(state.anchor), end = addDays(start, 6), days = byDate(vis);
+  document.getElementById('pl-label').textContent =
+    `${fmtShort(start)} – ${parseDay(end).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}`;
+  let html = '';
+  for (let i = 0; i < 7; i++) {
+    const d = addDays(start, i), list = sortItems(days[d] || []);
+    html += `<div class="wday ${d === TODAY ? 'today' : ''}" data-drop-date="${d}">
+      <div class="whead"><span class="wd">${DOW[i]}</span><span class="wn">${parseDay(d).getDate()}</span></div>
+      <div class="wbody">${list.map(it => card(it, { noDate: true })).join('')}
+        <button class="wadd" data-add-date="${d}">+ Add</button></div></div>`;
+  }
+  return `<div class="week">${html}</div>`;
+}
+
+function renderBoard(vis) {
+  const cols = [['todo', 'To do', 'Planned experiments and tasks'], ['doing', 'In progress', 'Running experiments, tasks under way'], ['done', 'Done', 'Finished, failed or abandoned']];
+  return `<div class="board">${cols.map(([c, label, hint]) => {
+    let list = vis.filter(i => i.column === c);
+    list.sort((a, b) => (a.date || '9999') .localeCompare(b.date || '9999') || a.title.localeCompare(b.title));
+    if (c === 'done') list = list.slice().reverse().slice(0, 60);
+    return `<div class="col" data-drop-col="${c}">
+      <div class="chead"><span class="eyebrow" title="${hint}">${label}</span><span class="n">${list.length}</span></div>
+      <div class="cbody">${list.map(it => card(it)).join('') ||
+        `<div class="text-[12px] text-center py-6" style="color: var(--ink-faint)">${c === 'done' && !state.showDone ? 'Done items are hidden — toggle “Done” above.' : 'Nothing here.'}</div>`}</div></div>`;
+  }).join('')}</div>`;
+}
+
+function renderList(vis) {
+  const weekEnd = addDays(mondayOf(TODAY), 6);
+  const groups = [['Overdue', i => isOverdue(i)], ['Today', i => !i.closed && i.date === TODAY],
+    ['Tomorrow', i => !i.closed && i.date === addDays(TODAY, 1)],
+    ['Later this week', i => !i.closed && i.date > addDays(TODAY, 1) && i.date <= weekEnd],
+    ['Coming up', i => !i.closed && i.date > weekEnd], ['Unscheduled', i => !i.closed && !i.date],
+    ['Done', i => i.closed]];
+  const used = new Set(); let html = '';
+  for (const [label, test] of groups) {
+    const list = vis.filter(i => !used.has(itemKey(i)) && test(i));
+    list.forEach(i => used.add(itemKey(i)));
+    if (!list.length) continue;
+    list.sort((a, b) => label === 'Done' ? (b.date || '').localeCompare(a.date || '') : (a.date || '').localeCompare(b.date || '') || a.title.localeCompare(b.title));
+    html += `<div class="lgroup"><h3><span class="eyebrow" ${label === 'Overdue' ? 'style="color: var(--danger)"' : ''}>${label}</span>
+      <span class="font-mono text-[11px]" style="color: var(--ink-faint)">${list.length}</span></h3>
+      <div class="tile tile-flush">${list.map(it => `
+        <div class="lrow ${it.closed ? 'closed' : ''}" data-item="${esc(itemKey(it))}">
+          ${kindIcon(it)}${it.kind === 'experiment' ? `<span class="sdot ${it.status}"></span>` : ''}
+          <span class="t">${esc(it.title)}</span>
+          <span class="ctx">${esc(it.experiment_name ? '🧪 ' + it.experiment_name : (it.manuscript_title ? '📄 ' + it.manuscript_title : ''))}</span>
+          <span class="kind-tag ${it.kind}">${it.kind === 'experiment' ? 'exp' : 'task'}</span>
+          <span class="datechip ${isOverdue(it) ? 'overdue' : it.date === TODAY ? 'today' : ''}" style="min-width: 64px; text-align: right; color: var(--ink-faint)">${esc(relDay(it.date) || '—')}</span>
+        </div>`).join('')}</div></div>`;
+  }
+  return html || `<div class="tile text-center py-12">
+    <div class="text-sm font-medium mb-1" style="color: var(--ink-muted)">Nothing planned yet</div>
+    <div class="text-[12.5px] mb-4" style="color: var(--ink-faint)">Add an experiment or a task above — anything with a date lands on the calendar.</div>
+    <button class="toolbar-btn btn-signal" onclick="openNew('experiment')">New experiment</button></div>`;
+}
+
+function renderRail(vis) {
+  const uns = sortItems(vis.filter(i => !i.date && !i.closed));
+  const od = items.filter(isOverdue).filter(i => state.kinds.has(i.kind)).sort((a, b) => a.date.localeCompare(b.date));
+  document.getElementById('n-unsched').textContent = uns.length || '';
+  document.getElementById('n-overdue').textContent = od.length || '';
+  document.getElementById('rail-unsched').innerHTML = uns.map(pill).join('') || '<div class="empty">Everything has a date.</div>';
+  document.getElementById('rail-overdue').innerHTML = od.map(it => `<div class="pill ${it.kind}" draggable="true" data-item="${esc(itemKey(it))}">
+      ${kindIcon(it)}<span class="t">${esc(it.title)}</span><span class="datechip overdue">${esc(fmtShort(it.date))}</span></div>`).join('')
+    || '<div class="empty">Nothing overdue.</div>';
+}
+
+// ── Navigation ───────────────────────────────────────────────────────────
+function setView(v) {
+  state.view = v; PLS.set('labui-plan-view', v); syncUrl(); render();
+}
+function step(n) {
+  if (state.view === 'week') state.anchor = addDays(state.anchor, 7 * n);
+  else { const a = parseDay(state.anchor); state.anchor = isoDay(new Date(a.getFullYear(), a.getMonth() + n, 1)); }
+  state.expanded.clear(); syncUrl(); render();
+}
+function goToday() { state.anchor = TODAY; syncUrl(); render(); }
+function syncUrl() {
+  const u = new URL(location.href);
+  u.searchParams.set('view', state.view);
+  if (state.view === 'month') { u.searchParams.set('month', state.anchor.slice(0, 7)); u.searchParams.delete('week'); }
+  else if (state.view === 'week') { u.searchParams.set('week', mondayOf(state.anchor)); u.searchParams.delete('month'); }
+  else { u.searchParams.delete('month'); u.searchParams.delete('week'); }
+  if (drawerItem && drawerItem.id) u.searchParams.set('open', drawerItem.kind + ':' + drawerItem.id); else u.searchParams.delete('open');
+  ['new', 'date', 'experiment'].forEach(k => u.searchParams.delete(k));
+  history.replaceState(null, '', u);
+}
+
+// ── Quick add ────────────────────────────────────────────────────────────
+function updateQuickHint() {
+  const { date } = parseQuick(document.getElementById('quick').value);
+  document.getElementById('quick-date').textContent = date ? '→ ' + relDay(date) + (relDay(date) !== fmtShort(date) ? ' · ' + fmtShort(date) : '') : '';
+}
+async function quickAdd() {
+  const inp = document.getElementById('quick');
+  const { title, date } = parseQuick(inp.value);
+  if (!title) { inp.focus(); return; }
+  const kind = state.quickKind;
+  const body = kind === 'task'
+    ? { title, due_date: date, status: 'todo', priority: 'normal', manuscript_id: state.ms || null }
+    : { name: title, scheduled_for: date, status: 'planned', manuscript_id: state.ms || null };
+  try {
+    const r = await fetch(kind === 'task' ? '/api/tasks' : '/api/experiments', {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) });
+    if (!r.ok) throw new Error((await r.json()).detail || 'HTTP ' + r.status);
+    inp.value = ''; updateQuickHint();
+    await load();
+    toast(`${kind === 'task' ? 'Task' : 'Experiment'} added${date ? ' for ' + relDay(date) : ' (unscheduled)'}`);
+  } catch (e) { toast('Could not add: ' + e.message); }
+}
+
+// ══ Drawer ═══════════════════════════════════════════════════════════════
+let drawerItem = null;     // { kind, id|null, data, tasks?, tab }
+let saveTimer = null, dirty = false;
+
+function openDrawerShell() {
+  document.getElementById('pl-drawer').classList.add('open');
+  document.getElementById('pl-drawer').setAttribute('aria-hidden', 'false');
+  document.getElementById('pl-scrim').classList.add('open');
+}
+async function closeDrawer() {
+  if (dirty && drawerItem && drawerItem.id) await saveNow();
+  document.getElementById('pl-drawer').classList.remove('open');
+  document.getElementById('pl-drawer').setAttribute('aria-hidden', 'true');
+  document.getElementById('pl-scrim').classList.remove('open');
+  drawerItem = null; syncUrl();
+}
+
+async function openItem(kind, id, keepTab) {
+  if (dirty && drawerItem && drawerItem.id && !(drawerItem.kind === kind && drawerItem.id === id)) await saveNow();
+  try {
+    if (kind === 'experiment') {
+      const [e, ts] = await Promise.all([
+        fetch('/api/experiments/' + encodeURIComponent(id)).then(r => { if (!r.ok) throw new Error('not found'); return r.json(); }),
+        fetch('/api/tasks?experiment_id=' + encodeURIComponent(id)).then(r => r.json()),
+      ]);
+      const tab = keepTab && drawerItem && drawerItem.id === id ? drawerItem.tab : (drawerItem && drawerItem.kind === 'experiment' && !keepTab ? drawerItem.tab : 'plan');
+      drawerItem = { kind, id, data: e, tasks: ts, tab: tab || 'plan' };
+    } else {
+      const t = await fetch('/api/tasks/' + encodeURIComponent(id)).then(r => { if (!r.ok) throw new Error('not found'); return r.json(); });
+      drawerItem = { kind, id, data: t };
+    }
+  } catch (e) { toast('That item no longer exists.'); drawerItem = null; syncUrl(); return; }
+  dirty = false;
+  renderDrawer(); openDrawerShell(); syncUrl();
+}
+
+function openNew(kind, preset = {}) {
+  const base = kind === 'task'
+    ? { title: '', status: 'todo', priority: 'normal', due_date: preset.date || null, experiment_id: preset.experiment || null,
+        manuscript_id: preset.ms || state.ms || null, description_md: '' }
+    : { name: '', status: 'planned', scheduled_for: preset.date || null, ran_on: null, manuscript_id: preset.ms || state.ms || null,
+        objective: '', methodology: '', equipment: '', observations: '', results_md: '', notes_md: '',
+        conditions: {}, tags: [], linked_papers: [] };
+  drawerItem = { kind, id: null, data: base, tasks: [], tab: 'plan', preset };
+  dirty = false;
+  renderDrawer(); openDrawerShell();
+  setTimeout(() => document.getElementById('dw-title').focus(), 60);
+}
+
+function msOptions(sel) {
+  return `<option value="">— none —</option>` + MANUSCRIPTS.map(m =>
+    `<option value="${esc(m.id)}" ${m.id === sel ? 'selected' : ''}>${esc(m.title.slice(0, 60))}</option>`).join('');
+}
+function expOptions(sel) {
+  const exps = items.filter(i => i.kind === 'experiment').sort((a, b) => a.title.localeCompare(b.title));
+  return `<option value="">— none —</option>` + exps.map(e =>
+    `<option value="${esc(e.id)}" ${e.id === sel ? 'selected' : ''}>${esc(e.title.slice(0, 60))}</option>`).join('');
+}
+
+function renderDrawer() {
+  const it = drawerItem; if (!it) return;
+  const isNew = !it.id, d = it.data;
+  const kindEl = document.getElementById('dw-kind');
+  kindEl.className = 'kind-tag ' + it.kind;
+  kindEl.textContent = it.kind === 'experiment' ? (isNew ? 'New experiment' : 'Experiment · ' + it.id) : (isNew ? 'New task' : 'Task');
+  const nk = document.getElementById('dw-newkind');
+  nk.style.display = isNew ? 'inline-flex' : 'none';
+  nk.querySelectorAll('[data-dkind]').forEach(b => b.classList.toggle('on', b.dataset.dkind === it.kind));
+  kindEl.style.display = isNew ? 'none' : '';
+  const title = document.getElementById('dw-title');
+  title.value = it.kind === 'experiment' ? (d.name || '') : (d.title || '');
+  title.placeholder = it.kind === 'experiment' ? 'Experiment name' : 'What needs doing?';
+  autoGrow(title);
+  setStatus(isNew ? '' : 'Saved');
+  document.getElementById('dw-body').innerHTML = it.kind === 'experiment' ? expBody(d, it) : taskBody(d);
+  document.getElementById('dw-foot').innerHTML = isNew
+    ? `<button class="toolbar-btn btn-signal" onclick="createFromDrawer()">Create ${it.kind}</button>
+       <button class="toolbar-btn" onclick="closeDrawer()">Cancel</button>
+       <span class="text-[11px] ml-auto" style="color: var(--ink-faint)">⌘↩ to create</span>`
+    : `<button class="toolbar-btn" onclick="deleteItem()" style="color: var(--danger)">Delete</button>
+       ${it.kind === 'task' && d.experiment_id ? `<button class="toolbar-btn" onclick="openItem('experiment', '${esc(d.experiment_id)}')">🧪 Open experiment</button>` : ''}
+       <span class="text-[11px] ml-auto" style="color: var(--ink-faint)">Changes save automatically</span>`;
+  document.querySelectorAll('#dw-body textarea[data-mentions]').forEach(t => { if (window.attachMentions) attachMentions(t); });
+  if (it.kind === 'experiment' && it.tab === 'papers') loadPaperTitles();
+}
+
+function taskBody(d) {
+  return `
+    <div class="prop"><label>Status</label>
+      <div class="seg seg-sm" style="width: auto">${['todo', 'in_progress', 'done'].map(s =>
+        `<button data-set="status" data-val="${s}" class="${d.status === s ? 'on' : ''}">${s === 'todo' ? 'To do' : s === 'in_progress' ? 'In progress' : 'Done'}</button>`).join('')}</div></div>
+    <div class="prop"><label>Priority</label>
+      <div class="seg seg-sm" style="width: auto">${['low', 'normal', 'high'].map(p =>
+        `<button data-set="priority" data-val="${p}" class="${d.priority === p ? 'on' : ''}">${p[0].toUpperCase() + p.slice(1)}</button>`).join('')}</div></div>
+    <div class="prop"><label>Due</label>
+      <div class="flex items-center gap-2"><input type="date" class="field" data-f="due_date" value="${esc(d.due_date || '')}" style="width: 170px">
+        <span class="text-[11.5px]" style="color: var(--ink-faint)">${d.due_date ? esc(relDay(d.due_date)) : 'Unscheduled'}</span></div></div>
+    <div class="prop"><label>Experiment</label><select class="field" data-f="experiment_id">${expOptions(d.experiment_id)}</select></div>
+    <div class="prop"><label>Manuscript</label><select class="field" data-f="manuscript_id">${msOptions(d.manuscript_id)}</select></div>
+    <label class="fl">Details — type @ to link papers, experiments, notes</label>
+    <textarea class="field" data-f="description_md" data-mentions rows="9" placeholder="Steps, links, anything worth remembering…">${esc(d.description_md || '')}</textarea>`;
+}
+
+function expBody(d, it) {
+  const tabs = [['plan', 'Plan'], ['notes', 'Notes'], ['results', 'Results'],
+                ['tasks', 'Tasks', (it.tasks || []).length], ['papers', 'Papers', (d.linked_papers || []).length]];
+  const isNew = !it.id;
+  const conds = Object.entries(d.conditions || {});
+  let pane = '';
+  if (it.tab === 'plan') {
+    pane = `
+      <label class="fl">Objective</label>
+      <textarea class="field" data-f="objective" rows="2" placeholder="What are you trying to find out?">${esc(d.objective || '')}</textarea>
+      <label class="fl">Method</label>
+      <textarea class="field" data-f="methodology" rows="5" placeholder="Step-by-step procedure">${esc(d.methodology || '')}</textarea>
+      <label class="fl">Conditions</label>
+      <div id="conds">${(conds.length ? conds : [['', '']]).map(([k, v]) => condRow(k, v)).join('')}</div>
+      <button class="text-[12px] hover:underline" style="color: var(--signal)" onclick="addCond()">+ Add condition</button>
+      <label class="fl">Equipment</label>
+      <textarea class="field" data-f="equipment" rows="2" placeholder="Instruments, models, calibration">${esc(d.equipment || '')}</textarea>`;
+  } else if (it.tab === 'notes') {
+    pane = `
+      ${isNew ? '' : `<div class="sync-note">✎ <span class="flex-1">These notes also live in <b>Notes → Experiments</b>; edit them in either place.</span>
+        ${(d.notes_md || '').trim() ? `<a href="/research/notes?open=experiment-${encodeURIComponent(it.id)}" class="hover:underline" style="white-space: nowrap">Open in Notes ↗</a>` : ''}</div>`}
+      <textarea class="field" data-f="notes_md" data-mentions rows="18" placeholder="Running notes — what happened, what to try next. Type @ to link papers, tasks, notes.">${esc(d.notes_md || '')}</textarea>`;
+  } else if (it.tab === 'results') {
+    pane = `
+      <label class="fl">Observations</label>
+      <textarea class="field" data-f="observations" rows="5" placeholder="What you saw during the run">${esc(d.observations || '')}</textarea>
+      <label class="fl">Results</label>
+      <textarea class="field" data-f="results_md" rows="8" placeholder="Headline finding, numbers, figure references">${esc(d.results_md || '')}</textarea>`;
+  } else if (it.tab === 'tasks') {
+    pane = isNew ? `<p class="text-[12.5px]" style="color: var(--ink-faint)">Create the experiment first, then add its prep and follow-up tasks here.</p>` : `
+      <p class="text-[12px] mb-2" style="color: var(--ink-faint)">Prep and follow-up for this run. They show on the calendar, and move with the experiment when you reschedule it.</p>
+      <div>${(it.tasks || []).map(t => `
+        <div class="subtask ${t.status === 'done' ? 'closed' : ''}">
+          <span class="check ${t.status === 'done' ? 'on' : ''}" data-toggle="task:${esc(t.id)}" role="checkbox" aria-checked="${t.status === 'done'}"></span>
+          <span class="t" data-open="task:${esc(t.id)}">${esc(t.title)}</span>
+          <span class="datechip ${t.due_date && t.status !== 'done' && t.due_date < TODAY ? 'overdue' : ''}" style="color: var(--ink-faint)">${esc(t.due_date ? relDay(t.due_date) : '')}</span>
+        </div>`).join('') || '<div class="text-[12.5px] py-2" style="color: var(--ink-faint)">No tasks yet.</div>'}</div>
+      <div class="flex gap-2 mt-3">
+        <input id="sub-title" class="field" placeholder="Add a task — e.g. “Prepare NaCl stock the day before”" style="flex: 1">
+        <input id="sub-date" type="date" class="field" style="width: 150px" value="${esc(d.scheduled_for ? addDays(d.scheduled_for, -1) : '')}">
+        <button class="toolbar-btn" onclick="addSubtask()">Add</button>
+      </div>`;
+  } else if (it.tab === 'papers') {
+    pane = `
+      <div id="linked">${(d.linked_papers || []).map(pid => `
+        <div class="paper-row"><div class="flex-1 min-w-0">
+          <div class="text-[13px] font-medium truncate" data-ptitle="${esc(pid)}" style="color: var(--ink)">${esc(paperTitles[pid] || pid)}</div>
+          <div class="text-[10.5px] font-mono truncate" style="color: var(--ink-faint)">${esc(pid)}</div></div>
+          <button class="x-btn" data-unlink="${esc(pid)}" title="Unlink">×</button></div>`).join('') ||
+        '<div class="text-[12.5px] py-1" style="color: var(--ink-faint)">No papers linked yet.</div>'}</div>
+      <label class="fl">Find papers in your library</label>
+      <div class="flex gap-2"><input id="paper-q" class="field" placeholder="topic, method, author…" style="flex: 1">
+        <button class="toolbar-btn" onclick="searchPapers()">Search</button></div>
+      <div id="paper-results" class="mt-2"></div>`;
+  }
+  return `
+    <div class="prop"><label>Status</label>
+      <select class="field" data-f="status" style="width: auto">${EXP_STATUSES.map(s =>
+        `<option value="${s}" ${d.status === s ? 'selected' : ''}>${STATUS_LABEL[s] || s}</option>`).join('')}</select></div>
+    <div class="prop"><label>Scheduled for</label>
+      <div class="flex items-center gap-2"><input type="date" class="field" data-f="scheduled_for" value="${esc(d.scheduled_for || '')}" style="width: 170px">
+        <span class="text-[11.5px]" style="color: var(--ink-faint)">${d.scheduled_for ? esc(relDay(d.scheduled_for)) : 'Unscheduled'}</span></div></div>
+    <div class="prop"><label>Ran on</label><input type="date" class="field" data-f="ran_on" value="${esc(d.ran_on || '')}" style="width: 170px"></div>
+    <div class="prop"><label>Manuscript</label><select class="field" data-f="manuscript_id">${msOptions(d.manuscript_id)}</select></div>
+    <div class="prop"><label>Tags</label><input class="field" data-f="tags" value="${esc((d.tags || []).join(', '))}" placeholder="DLS, NaCl, pH 7"></div>
+    <div class="dw-tabs">${tabs.map(([k, l, n]) =>
+      `<button data-tab="${k}" class="${it.tab === k ? 'on' : ''}">${l}${n ? `<span class="n">${n}</span>` : ''}</button>`).join('')}</div>
+    ${pane}`;
+}
+function condRow(k, v) {
+  return `<div class="cond-row"><input class="field" data-cond="k" value="${esc(k)}" placeholder="e.g. salinity">
+    <input class="field" data-cond="v" value="${esc(v)}" placeholder="e.g. 100 mM"><button class="x-btn" data-cond-del title="Remove">×</button></div>`;
+}
+function addCond() { document.getElementById('conds').insertAdjacentHTML('beforeend', condRow('', '')); }
+
+// Read the editor back into drawerItem.data (only fields on screen).
+function collect() {
+  const it = drawerItem, d = it.data;
+  const title = document.getElementById('dw-title').value.trim();
+  if (it.kind === 'experiment') d.name = title; else d.title = title;
+  document.querySelectorAll('#dw-body [data-f]').forEach(el => {
+    const f = el.dataset.f;
+    if (f === 'tags') d.tags = el.value.split(',').map(s => s.trim()).filter(Boolean);
+    else d[f] = el.value === '' && (f.endsWith('_id') || f === 'due_date' || f === 'scheduled_for' || f === 'ran_on') ? null : el.value;
+  });
+  const conds = document.getElementById('conds');
+  if (conds) {
+    const out = {};
+    conds.querySelectorAll('.cond-row').forEach(r => {
+      const k = r.querySelector('[data-cond="k"]').value.trim();
+      if (k) out[k] = r.querySelector('[data-cond="v"]').value;
+    });
+    d.conditions = out;
+  }
+}
+function payload() {
+  const d = drawerItem.data;
+  if (drawerItem.kind === 'task') return {
+    title: d.title, description_md: d.description_md || null, status: d.status, priority: d.priority,
+    due_date: d.due_date || null, manuscript_id: d.manuscript_id || null, experiment_id: d.experiment_id || null,
+    tags_json: JSON.stringify(d.tags || []) };
+  return {
+    name: d.name, status: d.status, scheduled_for: d.scheduled_for || null, ran_on: d.ran_on || null,
+    manuscript_id: d.manuscript_id || null, objective: d.objective || null, methodology: d.methodology || null,
+    conditions_json: JSON.stringify(d.conditions || {}), equipment: d.equipment || null,
+    observations: d.observations || null, results_md: d.results_md || null, notes_md: d.notes_md || null,
+    tags_json: JSON.stringify(d.tags || []), linked_papers_json: JSON.stringify(d.linked_papers || []) };
+}
+
+function setStatus(t) { document.getElementById('dw-status').textContent = t; }
+function scheduleSave() {
+  if (!drawerItem || !drawerItem.id) return;      // new items save on "Create"
+  dirty = true; setStatus('Editing…');
+  clearTimeout(saveTimer); saveTimer = setTimeout(saveNow, 700);
+}
+async function saveNow() {
+  clearTimeout(saveTimer);
+  if (!drawerItem || !drawerItem.id || !dirty) return;
+  collect();
+  const it = drawerItem, body = payload();
+  if (!(body.title || body.name)) { setStatus('Needs a title'); return; }
+  dirty = false; setStatus('Saving…');
+  try {
+    const r = await fetch(`/api/${it.kind === 'task' ? 'tasks' : 'experiments'}/${encodeURIComponent(it.id)}`, {
+      method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) });
+    if (!r.ok) throw new Error((await r.json()).detail || 'HTTP ' + r.status);
+    setStatus('Saved');
+    await load();
+  } catch (e) { dirty = true; setStatus('Not saved — ' + e.message); }
+}
+async function createFromDrawer() {
+  collect();
+  const it = drawerItem, body = payload();
+  if (!(body.title || body.name)) { document.getElementById('dw-title').focus(); return; }
+  try {
+    const r = await fetch(it.kind === 'task' ? '/api/tasks' : '/api/experiments', {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) });
+    if (!r.ok) throw new Error((await r.json()).detail || 'HTTP ' + r.status);
+    const d = await r.json();
+    await load();
+    toast(`${it.kind === 'task' ? 'Task' : 'Experiment'} created${(body.due_date || body.scheduled_for) ? ' — it’s on the calendar' : ''}`);
+    await openItem(it.kind, d.id);
+  } catch (e) { toast('Could not create: ' + e.message); }
+}
+async function deleteItem() {
+  const it = drawerItem; if (!it || !it.id) return;
+  const name = it.kind === 'experiment' ? it.data.name : it.data.title;
+  const extra = it.kind === 'experiment' ? '\n\nIts notes stay in Notes; linked tasks are kept but unlinked.' : '';
+  if (!confirm(`Delete “${name}”?${extra}`)) return;
+  await fetch(`/api/${it.kind === 'task' ? 'tasks' : 'experiments'}/${encodeURIComponent(it.id)}`, { method: 'DELETE' });
+  dirty = false; await closeDrawer(); await load(); toast('Deleted');
+}
+async function addSubtask() {
+  const t = document.getElementById('sub-title'), dt = document.getElementById('sub-date');
+  if (!t.value.trim()) { t.focus(); return; }
+  const r = await fetch('/api/tasks', { method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ title: t.value.trim(), due_date: dt.value || null, experiment_id: drawerItem.id,
+                           manuscript_id: drawerItem.data.manuscript_id || null, status: 'todo', priority: 'normal' }) });
+  if (!r.ok) { toast('Could not add task'); return; }
+  await load(); await openItem('experiment', drawerItem.id, true);
+}
+
+// Linked papers
+let paperTitles = {};
+async function loadPaperTitles() {
+  for (const pid of drawerItem?.data?.linked_papers || []) {
+    if (paperTitles[pid]) continue;
+    try {
+      const r = await fetch('/api/rag/paper?id=' + encodeURIComponent(pid));
+      if (!r.ok) continue;
+      const p = await r.json();
+      if (p.title) { paperTitles[pid] = p.title;
+        document.querySelectorAll(`[data-ptitle="${CSS.escape(pid)}"]`).forEach(el => { el.textContent = p.title; }); }
+    } catch (e) {}
+  }
+}
+async function searchPapers() {
+  const q = document.getElementById('paper-q').value.trim(); if (!q) return;
+  const out = document.getElementById('paper-results');
+  out.innerHTML = '<div class="text-[12px] py-2" style="color: var(--ink-faint)"><span class="spinner"></span> Searching…</div>';
+  try {
+    const r = await fetch('/api/rag/search', { method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ query: q, top_k: 10 }) });
+    const d = await r.json();
+    const seen = new Set(), linked = new Set(drawerItem.data.linked_papers || []);
+    const res = (d.results || []).filter(x => !seen.has(x.paper_id) && seen.add(x.paper_id));
+    res.forEach(x => { paperTitles[x.paper_id] = x.title || x.paper_id; });
+    out.innerHTML = res.map(x => `
+      <button class="paper-row w-full text-left" data-link="${esc(x.paper_id)}" ${linked.has(x.paper_id) ? 'disabled style="opacity:.5"' : ''}>
+        <div class="flex-1 min-w-0"><div class="text-[12.5px] font-medium truncate" style="color: var(--ink)">${esc(x.title || x.paper_id)}</div>
+        <div class="text-[10.5px] font-mono truncate" style="color: var(--ink-faint)">${esc(x.paper_id)}${x.section_name ? ' · ' + esc(x.section_name) : ''}</div></div>
+        <span class="text-[12px]" style="color: var(--signal)">${linked.has(x.paper_id) ? 'linked' : '+ link'}</span></button>`).join('')
+      || '<div class="text-[12px] py-2" style="color: var(--ink-faint)">No matches.</div>';
+  } catch (e) { out.innerHTML = `<div class="text-[12px]" style="color: var(--danger)">${esc(e.message)}</div>`; }
+}
+
+function autoGrow(el) { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; }
+
+// ── Events ───────────────────────────────────────────────────────────────
+document.addEventListener('click', async (e) => {
+  const t = e.target;
+  const v = t.closest('[data-view]'); if (v) { setView(v.dataset.view); return; }
+  const f = t.closest('[data-filter]');
+  if (f) {
+    const k = f.dataset.filter;
+    if (k === 'done') { state.showDone = !state.showDone; PLS.set('labui-plan-done', state.showDone ? '1' : '0'); }
+    else if (state.kinds.has(k) && state.kinds.size > 1) state.kinds.delete(k); else state.kinds.add(k);
+    render(); return;
+  }
+  const qk = t.closest('[data-qkind]'); if (qk) { state.quickKind = qk.dataset.qkind; render(); document.getElementById('quick').focus(); return; }
+  const tog = t.closest('[data-toggle]');
+  if (tog) {
+    e.stopPropagation();
+    const [kind, id] = tog.dataset.toggle.split(/:(.*)/s);
+    const cur = findItem(kind, id) || (drawerItem?.tasks || []).find(x => x.id === id);
+    const done = cur ? (cur.closed ?? cur.status === 'done') : false;
+    await move(kind, id, { column: done ? 'todo' : 'done' });
+    return;
+  }
+  const add = t.closest('[data-add-date]'); if (add) { openNew(state.quickKind, { date: add.dataset.addDate }); return; }
+  const more = t.closest('[data-expand]');
+  if (more) { const d = more.dataset.expand; state.expanded.has(d) ? state.expanded.delete(d) : state.expanded.add(d); render(); return; }
+  const op = t.closest('[data-open]'); if (op) { const [k, id] = op.dataset.open.split(/:(.*)/s); openItem(k, id); return; }
+  const item = t.closest('#pl-main [data-item], #pl-rail [data-item]');
+  if (item) { const [k, id] = item.dataset.item.split(/:(.*)/s); openItem(k, id); return; }
+  // Drawer controls
+  const dk = t.closest('[data-dkind]');
+  if (dk && drawerItem && !drawerItem.id) { collect(); const title = document.getElementById('dw-title').value;
+    openNew(dk.dataset.dkind, { ...drawerItem.preset, date: drawerItem.data.due_date || drawerItem.data.scheduled_for || drawerItem.preset?.date });
+    document.getElementById('dw-title').value = title; return; }
+  const tab = t.closest('#dw-body [data-tab]'); if (tab) { collect(); drawerItem.tab = tab.dataset.tab; renderDrawer(); setStatus(dirty ? 'Editing…' : drawerItem.id ? 'Saved' : ''); return; }
+  const set = t.closest('#dw-body [data-set]');
+  if (set) { collect(); drawerItem.data[set.dataset.set] = set.dataset.val; renderDrawer(); dirty = true; scheduleSave(); return; }
+  if (t.closest('[data-cond-del]')) { t.closest('.cond-row').remove(); scheduleSave(); return; }
+  const ul = t.closest('[data-unlink]');
+  if (ul) { collect(); drawerItem.data.linked_papers = (drawerItem.data.linked_papers || []).filter(p => p !== ul.dataset.unlink); renderDrawer(); dirty = true; scheduleSave(); return; }
+  const ln = t.closest('[data-link]');
+  if (ln && !ln.disabled) { collect(); drawerItem.data.linked_papers = [...(drawerItem.data.linked_papers || []), ln.dataset.link];
+    const q = document.getElementById('paper-q')?.value; renderDrawer(); if (q) { document.getElementById('paper-q').value = q; searchPapers(); }
+    dirty = true; scheduleSave(); return; }
+});
+document.getElementById('pl-drawer').addEventListener('input', (e) => {
+  if (e.target.id === 'dw-title') autoGrow(e.target);
+  if (e.target.matches('[data-f], [data-cond], #dw-title')) scheduleSave();
+});
+document.getElementById('pl-drawer').addEventListener('change', (e) => {
+  if (e.target.matches('select[data-f], input[type=date][data-f]')) { collect(); renderDrawer(); dirty = !!drawerItem.id; scheduleSave(); }
+});
+document.addEventListener('keydown', (e) => {
+  const open = document.getElementById('pl-drawer').classList.contains('open');
+  if (e.key === 'Escape' && open && !document.querySelector('.mention-dropdown')) { closeDrawer(); return; }
+  if (open && (e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+    e.preventDefault(); if (drawerItem && !drawerItem.id) createFromDrawer(); else saveNow(); return; }
+  if (e.target.id === 'dw-title' && e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault(); if (drawerItem && !drawerItem.id) createFromDrawer(); else saveNow(); return; }
+  if (e.target.id === 'quick' && e.key === 'Enter') { e.preventDefault(); quickAdd(); }
+  if (e.target.id === 'sub-title' && e.key === 'Enter') { e.preventDefault(); addSubtask(); }
+  if (e.target.id === 'paper-q' && e.key === 'Enter') { e.preventDefault(); searchPapers(); }
+});
+document.getElementById('quick').addEventListener('input', updateQuickHint);
+document.getElementById('f-ms').addEventListener('change', (e) => { state.ms = e.target.value; render(); });
+document.getElementById('f-q').addEventListener('input', (e) => { state.q = e.target.value.trim(); render(); });
+
+// Drag and drop: calendar days and the Unscheduled tray take a date; board
+// columns take a status.
+let dragKey = null;
+document.addEventListener('dragstart', (e) => {
+  const el = e.target.closest && e.target.closest('[data-item][draggable="true"]');
+  if (!el) return;
+  dragKey = el.dataset.item;
+  e.dataTransfer.setData('text/plain', dragKey);
+  e.dataTransfer.effectAllowed = 'move';
+  el.classList.add('dragging');
+});
+document.addEventListener('dragend', (e) => {
+  e.target.closest && e.target.closest('[data-item]')?.classList.remove('dragging');
+  document.querySelectorAll('.drop-on').forEach(x => x.classList.remove('drop-on'));
+  dragKey = null;
+});
+document.addEventListener('dragover', (e) => {
+  const z = e.target.closest && e.target.closest('[data-drop-date], [data-drop-col]');
+  if (!z || !dragKey) return;
+  e.preventDefault();
+  if (!z.classList.contains('drop-on')) {
+    document.querySelectorAll('.drop-on').forEach(x => x.classList.remove('drop-on'));
+    z.classList.add('drop-on');
+  }
+});
+document.addEventListener('drop', (e) => {
+  const z = e.target.closest && e.target.closest('[data-drop-date], [data-drop-col]');
+  if (!z || !dragKey) return;
+  e.preventDefault();
+  z.classList.remove('drop-on');
+  const [kind, id] = dragKey.split(/:(.*)/s);
+  const it = findItem(kind, id);
+  if ('dropCol' in z.dataset) { if (it && it.column !== z.dataset.dropCol) move(kind, id, { column: z.dataset.dropCol }); }
+  else {
+    const date = z.dataset.dropDate || null;
+    if (!it || it.date !== date) move(kind, id, { date });
+  }
+});
+
+// ── Helpers ──────────────────────────────────────────────────────────────
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function toast(msg) {
+  const t = document.createElement('div');
+  t.className = 'fixed bottom-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-lg text-sm shadow-lg';
+  t.style.cssText = 'background: var(--ink); color: var(--surface); z-index: 90';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2800);
+}
+
+// ── Boot: URL → state ────────────────────────────────────────────────────
+(async function boot() {
+  // The drawer must sit at the document root: inside the page body it shares
+  // that element's stacking context, and the sticky page header paints over it.
+  document.body.appendChild(document.getElementById('pl-scrim'));
+  document.body.appendChild(document.getElementById('pl-drawer'));
+  const p = new URLSearchParams(location.search);
+  if (['month', 'week', 'board', 'list'].includes(p.get('view'))) state.view = p.get('view');
+  if (/^\d{4}-\d{2}$/.test(p.get('month') || '')) state.anchor = p.get('month') + '-01';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(p.get('week') || '')) state.anchor = p.get('week');
+  if (p.get('kind') === 'experiment' || p.get('kind') === 'task') state.kinds = new Set([p.get('kind')]);
+  if (p.get('ms')) { state.ms = p.get('ms'); document.getElementById('f-ms').value = state.ms; }
+  await load();
+  const open = p.get('open');
+  if (open && open.includes(':')) { const [k, id] = open.split(/:(.*)/s); openItem(k, id); }
+  else if (p.get('new') === 'task' || p.get('new') === 'experiment')
+    openNew(p.get('new'), { date: p.get('date') || null, experiment: p.get('experiment') || null, ms: p.get('ms') || null });
+  else syncUrl();
+})();
+</script>
+{% endblock %}

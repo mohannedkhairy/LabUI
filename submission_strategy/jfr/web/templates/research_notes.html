@@ -65,20 +65,20 @@
       <div class="mb-3">
         <div class="text-[10px] uppercase tracking-wider text-ink-400 font-semibold mb-1.5">Width</div>
         <div class="grid grid-cols-3 gap-1.5" id="width-buttons">
-          <button onclick="setAppearance('width','focused')" data-w="focused" class="appearance-btn text-[11px] py-1.5 rounded-md">Focused</button>
-          <button onclick="setAppearance('width','comfort')" data-w="comfort" class="appearance-btn text-[11px] py-1.5 rounded-md">Comfort</button>
-          <button onclick="setAppearance('width','wide')"    data-w="wide"    class="appearance-btn text-[11px] py-1.5 rounded-md">Wide</button>
+          <button onclick="setReadingAppearance('width','focused')" data-w="focused" class="appearance-btn text-[11px] py-1.5 rounded-md">Focused</button>
+          <button onclick="setReadingAppearance('width','comfort')" data-w="comfort" class="appearance-btn text-[11px] py-1.5 rounded-md">Comfort</button>
+          <button onclick="setReadingAppearance('width','wide')"    data-w="wide"    class="appearance-btn text-[11px] py-1.5 rounded-md">Wide</button>
         </div>
       </div>
       <div>
         <div class="text-[10px] uppercase tracking-wider text-ink-400 font-semibold mb-1.5">Typeface</div>
         <div class="grid grid-cols-2 gap-1.5" id="face-buttons">
-          <button onclick="setAppearance('face','sf-pro')"     data-f="sf-pro"     class="appearance-btn text-[11px] py-1.5 rounded-md" style="font-family: -apple-system, BlinkMacSystemFont, ui-sans-serif, sans-serif">SF Pro</button>
-          <button onclick="setAppearance('face','sf-rounded')" data-f="sf-rounded" class="appearance-btn text-[11px] py-1.5 rounded-md" style="font-family: ui-rounded, -apple-system, sans-serif">SF Rounded</button>
-          <button onclick="setAppearance('face','new-york')"   data-f="new-york"   class="appearance-btn text-[11px] py-1.5 rounded-md" style="font-family: ui-serif, 'New York', Georgia, serif">New York</button>
-          <button onclick="setAppearance('face','avenir')"     data-f="avenir"     class="appearance-btn text-[11px] py-1.5 rounded-md" style="font-family: Avenir, 'Avenir Next', -apple-system, sans-serif">Avenir</button>
-          <button onclick="setAppearance('face','charter')"    data-f="charter"    class="appearance-btn text-[11px] py-1.5 rounded-md" style="font-family: Charter, Georgia, serif">Charter</button>
-          <button onclick="setAppearance('face','sf-mono')"    data-f="sf-mono"    class="appearance-btn text-[11px] py-1.5 rounded-md" style="font-family: ui-monospace, 'SF Mono', Menlo, monospace">SF Mono</button>
+          <button onclick="setReadingAppearance('face','sf-pro')"     data-f="sf-pro"     class="appearance-btn text-[11px] py-1.5 rounded-md" style="font-family: -apple-system, BlinkMacSystemFont, ui-sans-serif, sans-serif">SF Pro</button>
+          <button onclick="setReadingAppearance('face','sf-rounded')" data-f="sf-rounded" class="appearance-btn text-[11px] py-1.5 rounded-md" style="font-family: ui-rounded, -apple-system, sans-serif">SF Rounded</button>
+          <button onclick="setReadingAppearance('face','new-york')"   data-f="new-york"   class="appearance-btn text-[11px] py-1.5 rounded-md" style="font-family: ui-serif, 'New York', Georgia, serif">New York</button>
+          <button onclick="setReadingAppearance('face','avenir')"     data-f="avenir"     class="appearance-btn text-[11px] py-1.5 rounded-md" style="font-family: Avenir, 'Avenir Next', -apple-system, sans-serif">Avenir</button>
+          <button onclick="setReadingAppearance('face','charter')"    data-f="charter"    class="appearance-btn text-[11px] py-1.5 rounded-md" style="font-family: Charter, Georgia, serif">Charter</button>
+          <button onclick="setReadingAppearance('face','sf-mono')"    data-f="sf-mono"    class="appearance-btn text-[11px] py-1.5 rounded-md" style="font-family: ui-monospace, 'SF Mono', Menlo, monospace">SF Mono</button>
         </div>
       </div>
     </div>
@@ -235,7 +235,7 @@ function noteRowHtml(n) {
   const active = n.id === currentNoteId;
   return `
     <button onclick="openNote('${escapeJs(n.id)}')" class="note-row ${active ? 'active' : ''}">
-      <div class="font-medium truncate">${escapeHtml(n.title)}</div>
+      <div class="font-medium truncate">${n.experiment ? '<span title="Experiment notes — synced with the Planner">🧪 </span>' : ''}${escapeHtml(n.title)}</div>
       <div class="text-[10px] text-ink-400 mt-0.5 truncate">${new Date(n.modified * 1000).toLocaleDateString()}</div>
       <div class="text-[11px] text-ink-500 dark:text-ink-400 mt-1 line-clamp-2">${escapeHtml(n.preview)}</div>
     </button>`;
@@ -338,9 +338,13 @@ function parseFrontmatter(raw) {
     if (dm) parts.push(dm[1].trim());
     meta = parts.join(' · ');
   }
+  // Notes are written as frontmatter, a blank line, then "# title" — drop the
+  // blank lines first or the heading is never recognised and shows twice
+  // (and an edit would save it into the body again).
+  body = body.replace(/^\s*\n/, '');
   const h1 = body.match(/^#\s+(.+?)\n/);
   if (h1 && title && h1[1].trim() === title.trim()) {
-    body = body.slice(h1[0].length);
+    body = body.slice(h1[0].length).replace(/^\s*\n/, '');
   }
   return { title, body, meta };
 }
@@ -352,7 +356,20 @@ function showReader(title, content) {
   document.getElementById('reader-header').style.display = 'flex';
   document.getElementById('reader-title').textContent = title;
   const { meta } = parseFrontmatter(currentRawContent);
-  document.getElementById('reader-meta').textContent = meta;
+  const metaEl = document.getElementById('reader-meta');
+  metaEl.textContent = meta;
+  // Experiment notes are mirrored from the Planner and synced both ways.
+  const fm = (currentRawContent.match(/^---\n([\s\S]*?)\n---/) || [])[1] || '';
+  const exp = (fm.match(/^experiment:\s*(\S+)\s*$/m) || [])[1];
+  if (exp) {
+    const a = document.createElement('a');
+    a.href = '/plan?open=experiment:' + encodeURIComponent(exp);
+    a.className = 'ml-2 hover:underline';
+    a.style.color = 'var(--data)';
+    a.textContent = '🧪 Experiment notes · open in Planner ↗';
+    a.title = 'Edits here are saved back to the experiment';
+    metaEl.appendChild(a);
+  }
   document.getElementById('reader-edit').textContent = 'Edit';
   let html = mdReady ? marked.parse(window.normalizeMath ? window.normalizeMath(content) : content) : `<pre>${escapeHtml(content)}</pre>`;
   if (window.renderMentionsHtml) html = renderMentionsHtml(html);
@@ -392,7 +409,7 @@ async function saveNote() {
       });
       if (!r.ok) throw new Error('HTTP ' + r.status);
       d = await r.json();
-      toast('Saved ' + d.id);
+      toast(d.synced ? 'Saved — and updated the experiment in the Planner' : 'Saved ' + d.id);
     } else {
       // Brand-new note → create it.
       const r = await fetch('/api/rag/notes', {
@@ -463,7 +480,7 @@ function initAppearance() {
   applyAppearance(width, face);
 }
 
-function setAppearance(kind, value) {
+function setReadingAppearance(kind, value) {
   const width = kind === 'width' ? value : (localStorage.getItem('labui-notes-width') || 'comfort');
   const face = kind === 'face' ? value : (localStorage.getItem('labui-notes-face') || 'sf-pro');
   localStorage.setItem('labui-notes-width', width);
