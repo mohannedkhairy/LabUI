@@ -55,7 +55,7 @@
                     border-color: color-mix(in srgb, var(--signal) 34%, transparent);
                     color: var(--signal-ink); font-weight: 600; }
   .dark .sec-tab.active { color: var(--signal); }
-  .sec-n { font-family: 'JetBrains Mono', monospace; font-size: 10px; opacity: .6; }
+  .sec-n { font-family: var(--font-mono); font-size: 10px; opacity: .6; }
   .sec-t { overflow: hidden; text-overflow: ellipsis; }
   .sec-ctl { display: none; align-items: center; gap: 1px; margin-left: 3px; }
   .sec-tab.active .sec-ctl { display: inline-flex; }
@@ -82,7 +82,7 @@
      a white editor sitting inside the dark theme. */
   #editor > .CodeMirror { height: 100%; }
   #editor .CodeMirror { background: transparent; color: var(--ink);
-                        font-family: 'JetBrains Mono', ui-monospace, monospace;
+                        font-family: var(--font-mono);
                         font-size: 14px; line-height: 1.72; }
   #editor .CodeMirror-lines { padding: 26px 0 30vh; }        /* room to write past the fold */
   #editor .CodeMirror-gutters { background: transparent; border-right: 0; }
@@ -156,6 +156,24 @@
   .asset-chip:hover { color: var(--signal); }
   .drawer-sub { padding: 9px 14px; border-bottom: 1px solid var(--line);
                 display: flex; align-items: center; gap: 8px; }
+
+  /* Phrases panel — the phrase bank's moves for this section, with your own
+     sentences first. Frames insert at the cursor; sentences are reference. */
+  .ph-move { padding: 11px 14px; border-bottom: 1px solid var(--line); }
+  .ph-move h4 { font-family: var(--font-display); font-size: 13.5px; font-weight: 600; color: var(--ink);
+                display: flex; justify-content: space-between; gap: 8px; align-items: baseline; margin: 0 0 6px; }
+  .ph-move h4 .tag { font-family: var(--font-mono); font-size: 9px; letter-spacing: .1em; text-transform: uppercase;
+                     color: var(--ink-faint); font-weight: 500; white-space: nowrap; }
+  .ph-pats { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+  .ph-pat { font-family: var(--font-mono); font-size: 11px; text-align: left; padding: 2px 7px; border-radius: 4px;
+            background: var(--sunken); border: 1px solid var(--line); color: var(--ink); cursor: pointer; }
+  .ph-pat:hover { border-color: var(--signal); color: var(--signal-ink); }
+  .ph-mine, .ph-corpus { font-size: 12px; line-height: 1.5; padding: 3px 0 3px 9px; margin: 3px 0; cursor: pointer; }
+  .ph-mine   { border-left: 2px solid var(--data); color: var(--ink); }
+  .ph-corpus { border-left: 2px solid var(--line-firm); color: var(--ink-muted); font-family: var(--font-display); }
+  .ph-mine:hover, .ph-corpus:hover { background: var(--sunken); }
+  .ph-src { font-family: var(--font-mono); font-size: 9.5px; color: var(--ink-faint); }
+  .ph-mine .ph-src { color: var(--data); }
 
   #add-box[hidden] { display: none; }
   #save-status { max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -250,6 +268,9 @@
         <button onclick="openDrawer('layout')" class="toolbar-btn" title="Upload or insert a figure">
           <span aria-hidden="true">▧</span><span class="btn-label">Figure</span>
         </button>
+        <button onclick="toggleDrawer('phrases')" class="toolbar-btn" title="Phrase frames for this section — yours first, from your style samples">
+          <span aria-hidden="true" style="font-family:Georgia,serif">¶</span><span class="btn-label">Phrases</span>
+        </button>
         </div>
 
         <span class="tb-rule"></span>
@@ -305,6 +326,7 @@
       <div class="drawer-tabs">
         <button class="drawer-tab" data-panel="preview"  onclick="openDrawer('preview')">Preview</button>
         <button class="drawer-tab" data-panel="standard" onclick="openDrawer('standard')">Standard</button>
+        <button class="drawer-tab" data-panel="phrases"  onclick="openDrawer('phrases')">Phrases</button>
         <button class="drawer-tab" data-panel="refs"     onclick="openDrawer('refs')">Refs</button>
         <button class="drawer-tab" data-panel="layout"   onclick="openDrawer('layout')">Page</button>
         <button class="drawer-tab" data-panel="fit"      onclick="openDrawer('fit')">Fit</button>
@@ -325,6 +347,25 @@
         <div id="audit-out" class="px-4 py-3 text-xs" style="color: var(--ink-muted)">
           Run an audit to score this section against ~76,000 words of published prose in the field.
         </div>
+      </div>
+
+      <!-- Phrases -->
+      <div id="dp-phrases" class="drawer-panel scroll-thin" hidden>
+        <div class="drawer-sub" style="flex-wrap: wrap">
+          <span class="eyebrow flex-1">Phrases · <span id="ph-section">—</span></span>
+          <label class="text-[11px] flex items-center gap-1" style="color: var(--ink-muted)" title="Only moves you have used in your own style samples">
+            <input type="checkbox" id="ph-mine-only" onchange="renderPhrases()"> mine only
+          </label>
+          <input id="ph-q" type="search" class="field" placeholder="Filter moves, frames…" oninput="renderPhrases()"
+                 style="padding: 4px 8px; font-size: 12px; flex-basis: 100%;">
+        </div>
+        <div class="px-4 py-2 text-[11px] leading-relaxed" style="color: var(--ink-faint); border-bottom: 1px solid var(--line)">
+          Click a <span class="font-mono" style="color: var(--ink-muted)">frame</span> to insert it with its first blank selected.
+          <span style="color: var(--data)">Teal</span> lines are your own sentences (from
+          <a href="/research/style" style="color: var(--data)" class="hover:underline">Writing Style</a>) — the
+          Style Writer imitates these. Click any sentence to copy it.
+        </div>
+        <div id="ph-list"><div class="p-4 text-xs" style="color: var(--ink-faint)">Loading…</div></div>
       </div>
 
       <!-- References & links -->
@@ -474,7 +515,7 @@ const DRAWER_KEY = 'labui-write-panel';
 const WIDTH_KEY  = 'labui-write-panel-w';
 const FOCUS_KEY  = 'labui-write-focus';
 const WIDE_KEY   = 'labui-write-wide';
-const PANELS = ['preview', 'standard', 'refs', 'layout', 'fit'];
+const PANELS = ['preview', 'standard', 'phrases', 'refs', 'layout', 'fit'];
 let drawer = null;         // null when closed, otherwise the open panel id
 
 function openDrawer(name) {
@@ -488,6 +529,7 @@ function openDrawer(name) {
     t.classList.toggle('active', t.dataset.panel === name));
   lsSet(DRAWER_KEY, name);
   if (name === 'preview') updatePreview(true);
+  if (name === 'phrases') loadPhrases();
   if (cm) cm.refresh();
 }
 
@@ -1199,11 +1241,99 @@ function guessSectionFromFile() {
   }
 }
 
-function onSectionChange() { if (lastAudit) runAudit(); }
+function onSectionChange() { if (lastAudit) runAudit(); if (drawer === 'phrases') loadPhrases(); }
 
 function currentSection() {
   return document.getElementById('section-select')?.value || '';
 }
+
+// ── Phrases ──────────────────────────────────────────────────────────────────
+// The phrase bank's moves for the section being written, from
+// /api/rag/skills/phrases: the pack's frames, a couple of corpus exemplars, and
+// the user's own sentences mined from their style samples.
+let phrases = null, phrasesFor = null;
+const SECTION_GUESS = [[/intro/i, 'intro'], [/method|material|experimental/i, 'methods'],
+  [/result/i, 'results'], [/discuss/i, 'discussion'], [/conclu|summary/i, 'conclusion'],
+  [/abstract/i, 'abstract'], [/review|response|rebuttal/i, 'reviewer']];
+
+function phrasesSection() {
+  const chosen = currentSection();
+  if (chosen) return { id: chosen, how: '' };
+  const title = document.getElementById('editor-title')?.value || '';
+  const hit = SECTION_GUESS.find(([rx]) => rx.test(title));
+  return hit ? { id: hit[1], how: ' (from title)' } : { id: '', how: '' };
+}
+
+async function loadPhrases() {
+  const sec = phrasesSection();
+  const label = document.querySelector(`#section-select option[value="${sec.id}"]`)?.textContent;
+  document.getElementById('ph-section').textContent = sec.id ? (label || sec.id) + sec.how : 'general moves — pick a section';
+  if (phrases && phrasesFor === sec.id) { renderPhrases(); return; }
+  try {
+    const r = await fetch('/api/rag/skills/phrases?section=' + encodeURIComponent(sec.id));
+    if (!r.ok) throw new Error(r.status === 404 ? 'No writing standard installed.' : 'HTTP ' + r.status);
+    phrases = await r.json();
+    phrasesFor = sec.id;
+  } catch (e) {
+    document.getElementById('ph-list').innerHTML =
+      `<div class="p-4 text-xs" style="color: var(--ink-faint)">${escapeHtml(e.message)}</div>`;
+    return;
+  }
+  renderPhrases();
+}
+
+function renderPhrases() {
+  if (!phrases) return;
+  const q = (document.getElementById('ph-q').value || '').trim().toLowerCase();
+  const mineOnly = document.getElementById('ph-mine-only').checked;
+  const moves = phrases.moves.filter(m => {
+    if (mineOnly && !m.yours.length) return false;
+    if (!q) return true;
+    return [m.move, ...m.patterns, ...m.yours.map(y => y.text), ...m.corpus.map(c => c.text)]
+      .join(' ').toLowerCase().includes(q);
+  });
+  const list = document.getElementById('ph-list');
+  if (!moves.length) {
+    list.innerHTML = `<div class="p-4 text-xs" style="color: var(--ink-faint)">${
+      mineOnly && !phrases.samples ? 'No style samples yet — add some on the Writing Style page.' : 'No moves match.'}</div>`;
+    return;
+  }
+  list.innerHTML = moves.map(m => `
+    <div class="ph-move">
+      <h4><span>${escapeHtml(m.move)}</span><span class="tag">${m.general ? 'general' : escapeHtml(m.sec.replace(/^\d+\.\s*/, ''))}</span></h4>
+      ${m.patterns.length ? `<div class="ph-pats">${m.patterns.map(p =>
+        `<button class="ph-pat" data-frame="${escapeHtml(p)}" title="Insert at cursor">${escapeHtml(p)}</button>`).join('')}</div>` : ''}
+      ${m.yours.slice(0, 4).map(y => `<div class="ph-mine" data-copy="${escapeHtml(y.text)}" title="Your sentence — click to copy">
+        ${escapeHtml(y.text)} <span class="ph-src">· ${escapeHtml(y.sample)}</span></div>`).join('')}
+      ${m.corpus.map(c => `<div class="ph-corpus" data-copy="${escapeHtml(c.text)}" title="Published exemplar — for rhythm, never to paste">
+        ${escapeHtml(c.text)} <span class="ph-src">· ${escapeHtml(c.source)}</span></div>`).join('')}
+    </div>`).join('');
+}
+
+// Insert a frame at the cursor and select its first slot (X, Y, [n], …) so
+// typing replaces it.
+function insertFrame(frame) {
+  if (!cm) return;
+  const text = frame.replace(/\s+/g, ' ').trim() + ' ';
+  const from = cm.getCursor('from');
+  const line = cm.getLine(from.line);
+  const lead = from.ch > 0 && /\S/.test(line[from.ch - 1]) ? ' ' : '';
+  cm.replaceSelection(lead + text);
+  const start = cm.indexFromPos(from) + lead.length;
+  const slot = /\[[^\]]*\]|\.\.\.|…|\b[XYZNMW]\b/.exec(text) || /(?!^)\b[A-Z]\b/.exec(text);
+  if (slot) cm.setSelection(cm.posFromIndex(start + slot.index), cm.posFromIndex(start + slot.index + slot[0].length));
+  cm.focus();
+  dirty = true;
+}
+
+document.addEventListener('click', (ev) => {
+  const f = ev.target.closest('#ph-list [data-frame]');
+  if (f) { insertFrame(f.dataset.frame); return; }
+  const c = ev.target.closest('#ph-list [data-copy]');
+  if (c && navigator.clipboard) {
+    navigator.clipboard.writeText(c.dataset.copy).then(() => setStatus('copied')).catch(() => {});
+  }
+});
 
 // ── Audit ────────────────────────────────────────────────────────────────────
 

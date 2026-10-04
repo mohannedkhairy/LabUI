@@ -1,74 +1,152 @@
 {% extends "base.html" %}
 {% block title %}Writing Style{% endblock %}
-{% block heading %}Research Lab — Writing Style{% endblock %}
+{% block heading %}Writing Style{% endblock %}
+{% block subtitle %}Your own prose — the Style Writer matches its voice, and the Phrase Bank learns your sentence frames from it{% endblock %}
 {% block header_actions %}
-  <button onclick="newSample()" class="bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium px-4 py-2 rounded-lg flex items-center gap-2">
-    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
+  <a href="/research/phrasebank" class="toolbar-btn">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+    Phrase Bank
+  </a>
+  <button onclick="newSample()" class="toolbar-btn btn-signal">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
     Add sample
   </button>
 {% endblock %}
 
+{% block head %}
+<style>
+  .move-tag { font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase;
+              color: var(--data); }
+  .frame-line { font-size: 13.5px; line-height: 1.6; color: var(--ink-muted); }
+  .frame-line b { color: var(--ink); font-weight: 600; }
+  .phrase-row { display: flex; gap: 10px; align-items: flex-start; padding: 9px 0; border-bottom: 1px solid var(--line); }
+  .phrase-row:last-child { border-bottom: 0; }
+  .phrase-row .hide-btn { opacity: 0; transition: opacity .15s ease; color: var(--ink-faint); font-size: 11px;
+                          flex-shrink: 0; padding: 2px 6px; border-radius: 4px; }
+  .phrase-row:hover .hide-btn { opacity: 1; }
+  .phrase-row .hide-btn:hover { color: var(--danger); background: var(--sunken); }
+  .sample-btn { width: 100%; text-align: left; padding: 9px 11px; border-radius: var(--radius-sm);
+                border: 1px solid transparent; transition: border-color .15s ease, background-color .15s ease; }
+  .sample-btn:hover { background: var(--sunken); }
+  .sample-btn.on { border-color: var(--signal); background: var(--signal-wash); }
+  .bank-card { margin: 12px; padding: 12px 14px; border-radius: var(--radius); text-align: left; width: calc(100% - 24px);
+               background: var(--data-wash); border: 1px solid color-mix(in srgb, var(--data) 28%, transparent);
+               transition: border-color .15s ease; }
+  .bank-card:hover, .bank-card.on { border-color: var(--data); }
+  .bank-num { font-family: var(--font-display); font-size: 26px; font-weight: 600; line-height: 1; color: var(--ink); }
+  .conn-table { width: 100%; font-size: 12.5px; border-collapse: collapse; }
+  .conn-table td, .conn-table th { padding: 5px 6px; border-bottom: 1px solid var(--line); text-align: left; }
+  .conn-table th { font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase;
+                   color: var(--ink-faint); font-weight: 500; }
+  .conn-table .num { text-align: right; font-family: var(--font-mono); }
+  .conn-table .over { color: var(--signal); font-weight: 600; }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="grid grid-cols-12 gap-5 h-[calc(100vh-13rem)]">
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-5 lg:h-[calc(100vh-13rem)]">
 
   <!-- Sample list -->
-  <aside class="col-span-4 tile tile-flush flex flex-col overflow-hidden">
-    <div class="px-4 py-3 border-b border-ink-100 dark:border-ink-800">
+  <aside class="lg:col-span-4 tile tile-flush flex flex-col overflow-hidden max-h-[70vh] lg:max-h-none">
+    <div class="px-4 pt-4 pb-1">
       <div class="flex items-center justify-between">
-        <h3 class="font-semibold text-sm">Style samples</h3>
-        <span id="samples-count" class="text-[11px] text-ink-400 font-mono">—</span>
+        <div class="eyebrow">Style samples</div>
+        <span id="samples-count" class="font-mono text-[11px]" style="color: var(--ink-faint)">—</span>
       </div>
-      <p class="text-[11px] text-ink-400 mt-1 leading-snug">
-        Paste samples of your own scientific writing. The <b>✍️ Style Writer</b>
-        agent reads them to match your voice when drafting passages.
-      </p>
     </div>
-    <button onclick="newSample()"
-      class="m-3 mb-1 bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold px-4 py-2.5 rounded-xl flex items-center justify-center gap-2 shadow-[0_4px_12px_-4px_rgba(79, 140, 92,0.45)]">
-      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-      Add sample
+
+    <button id="bank-card" class="bank-card" onclick="showOverview()" title="See every move found across your samples">
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <div class="move-tag mb-1">Your phrase bank</div>
+          <div class="flex items-baseline gap-2">
+            <span id="bank-sentences" class="bank-num">—</span>
+            <span class="text-[12px]" style="color: var(--ink-muted)">sentences in <b id="bank-moves">—</b> moves</span>
+          </div>
+          <div id="bank-note" class="text-[11px] mt-1.5" style="color: var(--ink-muted)">Mined from your samples.</div>
+        </div>
+        <span role="button" tabindex="0" onclick="event.stopPropagation(); rebuildBank()"
+              onkeydown="if(event.key==='Enter'){event.stopPropagation(); rebuildBank();}"
+              class="toolbar-btn" style="padding: 3px 8px" title="Re-read every sample and re-sort its sentences">
+          <span id="rebuild-icon">↻</span> Update
+        </span>
+      </div>
     </button>
-    <div id="samples-list" class="flex-1 overflow-y-auto scroll-thin p-2 space-y-1.5">
-      <div class="text-ink-400 text-center py-8 text-xs">Loading…</div>
+
+    <div id="samples-list" class="flex-1 overflow-y-auto scroll-thin px-2 pb-2 space-y-1">
+      <div class="text-center py-8 text-xs" style="color: var(--ink-faint)">Loading…</div>
     </div>
   </aside>
 
-  <!-- Reader / editor -->
-  <section class="col-span-8 bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-xl shadow-soft dark:shadow-soft-dark flex flex-col overflow-hidden">
-    <div id="reader-header" class="px-5 py-3 border-b border-ink-200 dark:border-ink-800 flex items-center justify-between" style="display:none">
-      <div>
-        <h3 id="reader-title" class="font-semibold text-sm"></h3>
-        <div id="reader-meta" class="text-[11px] text-ink-400 mt-0.5"></div>
+  <!-- Reader / editor / overview -->
+  <section class="lg:col-span-8 tile tile-flush flex flex-col overflow-hidden min-h-[60vh] lg:min-h-0">
+    <div id="reader-header" class="px-5 py-3 flex items-center justify-between gap-3" style="display:none; border-bottom: 1px solid var(--line)">
+      <div class="min-w-0">
+        <h3 id="reader-title" class="font-semibold text-sm truncate"></h3>
+        <div id="reader-meta" class="text-[11px] mt-0.5" style="color: var(--ink-faint)"></div>
       </div>
-      <div class="flex gap-2">
-        <button onclick="deleteCurrent()" class="text-xs bg-ink-100 dark:bg-ink-800 hover:bg-rose-100 dark:hover:bg-rose-950 hover:text-rose-700 text-ink-700 dark:text-ink-200 px-3 py-1.5 rounded-md">Delete</button>
+      <div class="flex gap-2 flex-shrink-0" id="reader-actions">
+        <button onclick="deleteCurrent()" class="toolbar-btn">Delete</button>
       </div>
     </div>
-    <div id="reader-view" class="flex-1 overflow-y-auto scroll-thin px-8 py-6" style="display:none">
-      <pre id="reader-content" class="whitespace-pre-wrap font-sans text-sm leading-relaxed text-ink-700 dark:text-ink-200 max-w-3xl"></pre>
+
+    <!-- One sample: its text, then the moves found in it -->
+    <div id="reader-view" class="flex-1 overflow-y-auto scroll-thin px-6 lg:px-8 py-6" style="display:none">
+      <pre id="reader-content" class="whitespace-pre-wrap font-sans text-sm leading-relaxed max-w-3xl" style="color: var(--ink)"></pre>
+      <div class="max-w-3xl mt-8 pt-5" style="border-top: 1px solid var(--line)">
+        <div class="flex items-baseline justify-between gap-3 mb-1">
+          <div class="eyebrow">Moves in this sample</div>
+          <span id="sample-moves-count" class="font-mono text-[11px]" style="color: var(--ink-faint)"></span>
+        </div>
+        <p class="text-[12px] mb-2" style="color: var(--ink-faint)">
+          Each sentence is matched to the Phrase Bank frame it follows; the frame's words are in bold.
+          These are what the Style Writer is shown when it drafts that kind of sentence.
+        </p>
+        <div id="sample-moves"></div>
+      </div>
     </div>
+
+    <!-- Overview across every sample -->
+    <div id="overview-view" class="flex-1 overflow-y-auto scroll-thin px-6 lg:px-8 py-6" style="display:none">
+      <div class="max-w-3xl space-y-8">
+        <div>
+          <div class="eyebrow mb-2">Connectives — yours against the corpus</div>
+          <div id="ov-connectives"></div>
+        </div>
+        <div>
+          <div class="flex items-baseline justify-between mb-1">
+            <div class="eyebrow">Moves found across your samples</div>
+            <button id="ov-restore" onclick="restoreHidden()" class="text-[11px] hover:underline" style="color: var(--ink-faint); display:none">Restore hidden</button>
+          </div>
+          <div id="ov-moves"></div>
+        </div>
+        <div id="ov-openers-wrap">
+          <div class="eyebrow mb-1">Openers you reach for</div>
+          <p class="text-[12px] mb-2" style="color: var(--ink-faint)">Three-word openings used more than once — habits worth knowing about, and frames of your own.</p>
+          <div id="ov-openers"></div>
+        </div>
+      </div>
+    </div>
+
     <div id="reader-edit-wrap" class="flex-1 flex flex-col overflow-hidden" style="display:none">
       <input id="edit-title" placeholder="Sample name (e.g. langmuir-intro-2023)"
-             class="w-full bg-transparent border-b border-ink-200 dark:border-ink-800 px-6 py-3 text-sm font-semibold outline-none">
+             class="w-full bg-transparent px-6 py-3 text-sm font-semibold outline-none" style="border-bottom: 1px solid var(--line)">
       <textarea id="edit-content" placeholder="Paste a paragraph or section of your own published writing…"
-                class="flex-1 bg-transparent font-mono text-sm px-6 py-3 outline-none resize-none"></textarea>
-      <div class="border-t border-ink-200 dark:border-ink-800 px-5 py-2.5 flex items-center gap-2">
-        <button onclick="saveSample()" class="bg-brand-600 hover:bg-brand-700 text-white text-xs font-medium px-4 py-1.5 rounded-md">Save sample</button>
-        <button onclick="cancelEdit()" class="text-ink-500 dark:text-ink-300 text-xs px-3 py-1.5">Cancel</button>
-        <span class="ml-auto text-[10px] text-ink-400">Stored as a file in <span class="font-mono">data/style/</span>. Keep samples representative — a few strong paragraphs beat many weak ones.</span>
+                class="flex-1 bg-transparent font-mono text-sm px-6 py-3 outline-none resize-none min-h-[40vh]"></textarea>
+      <div class="px-5 py-2.5 flex items-center gap-2 flex-wrap" style="border-top: 1px solid var(--line)">
+        <button onclick="saveSample()" class="toolbar-btn btn-signal">Save sample</button>
+        <button onclick="cancelEdit()" class="toolbar-btn">Cancel</button>
+        <span class="ml-auto text-[10.5px]" style="color: var(--ink-faint)">Saved to <span class="font-mono">data/style/</span>; its sentences join your phrase bank straight away. A few strong paragraphs per section beat many weak ones.</span>
       </div>
     </div>
-    <div id="reader-empty" class="flex-1 flex flex-col items-center justify-center text-ink-400 dark:text-ink-500 text-sm p-8">
-      <svg class="w-16 h-16 opacity-30 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+
+    <div id="reader-empty" class="flex-1 flex flex-col items-center justify-center text-sm p-8" style="color: var(--ink-faint)">
+      <svg class="w-14 h-14 opacity-30 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
       </svg>
-      <div class="text-base font-medium mb-1 text-ink-600 dark:text-ink-300">No samples yet</div>
-      <div class="text-xs mb-5 max-w-sm text-center">Add a few paragraphs of your own writing so the Style Writer can draft new text in your voice.</div>
-      <button onclick="newSample()"
-        class="bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold px-5 py-2.5 rounded-xl flex items-center gap-2">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-        Add your first sample
-      </button>
+      <div class="text-base font-medium mb-1" style="color: var(--ink-muted)">No samples yet</div>
+      <div class="text-xs mb-5 max-w-sm text-center">Add a few paragraphs of your own writing — ideally one per section (intro, results, discussion). The Style Writer drafts in that voice, and your sentences are sorted into the Phrase Bank's moves.</div>
+      <button onclick="newSample()" class="toolbar-btn btn-signal">Add your first sample</button>
     </div>
   </section>
 </div>
@@ -77,35 +155,183 @@
 {% block scripts %}
 <script>
 let currentSampleId = null;
+let bank = null;
+let samples = [];
 
-document.addEventListener('DOMContentLoaded', loadSamples);
+document.addEventListener('DOMContentLoaded', async () => {
+  await Promise.all([loadSamples(), loadBank()]);
+  if (samples.length) showOverview();
+});
 
+// ── Data ──────────────────────────────────────────────────────────────
 async function loadSamples() {
   const list = document.getElementById('samples-list');
   try {
     const r = await fetch('/api/rag/style');
-    const samples = await r.json();
+    samples = await r.json();
     document.getElementById('samples-count').textContent = samples.length;
-    if (!samples.length) {
-      list.innerHTML = '<div class="text-ink-400 text-center py-8 text-xs">No samples yet.</div>';
-      return;
-    }
-    list.innerHTML = samples.map(s => `
-      <button onclick="openSample('${escapeJs(s.id)}')"
-              class="w-full text-left px-3 py-2.5 rounded-lg border ${s.id === currentSampleId ? 'border-brand-400 bg-brand-50 dark:bg-brand-950' : 'border-transparent hover:border-ink-200 dark:hover:border-ink-700 hover:bg-ink-50 dark:hover:bg-ink-950'} transition">
-        <div class="font-medium text-xs truncate">${escapeHtml(s.title)}</div>
-        <div class="text-[10px] text-ink-400 mt-0.5 truncate">${s.chars.toLocaleString()} chars · ${new Date(s.modified * 1000).toLocaleDateString()}</div>
-        <div class="text-[11px] text-ink-500 dark:text-ink-400 mt-1 line-clamp-2">${escapeHtml(s.preview)}</div>
-      </button>
-    `).join('');
+    renderSampleList();
   } catch (e) {
-    list.innerHTML = `<div class="text-rose-500 text-xs">${escapeHtml(e.message)}</div>`;
+    list.innerHTML = `<div class="text-xs p-3" style="color: var(--danger)">${escapeHtml(e.message)}</div>`;
   }
+}
+
+function renderSampleList() {
+  const list = document.getElementById('samples-list');
+  if (!samples.length) {
+    list.innerHTML = '<div class="text-center py-8 text-xs" style="color: var(--ink-faint)">No samples yet.</div>';
+    return;
+  }
+  const matched = {};
+  (bank?.samples || []).forEach(s => { matched[s.id] = s; });
+  list.innerHTML = samples.map(s => {
+    const m = matched[s.id];
+    const tag = m ? `${m.matched}/${m.sentences} sentences matched` : '';
+    return `
+    <button class="sample-btn ${s.id === currentSampleId ? 'on' : ''}" data-sample="${escapeHtml(s.id)}">
+      <div class="font-medium text-[13px] truncate" style="color: var(--ink)">${escapeHtml(s.title)}</div>
+      <div class="text-[10.5px] mt-0.5 truncate font-mono" style="color: var(--ink-faint)">${s.chars.toLocaleString()} chars · ${new Date(s.modified * 1000).toLocaleDateString()}${tag ? ' · ' + tag : ''}</div>
+      <div class="text-[11.5px] mt-1 clamp-2" style="color: var(--ink-muted)">${escapeHtml(s.preview)}</div>
+    </button>`;
+  }).join('');
+}
+
+async function loadBank(force) {
+  try {
+    const r = await fetch('/api/rag/style/phrasebank' + (force ? '/rebuild' : ''), { method: force ? 'POST' : 'GET' });
+    bank = await r.json();
+  } catch (e) { bank = null; }
+  renderBankCard();
+  renderSampleList();
+}
+
+function bankTotals() {
+  const moves = (bank?.moves || []).filter(m => m.yours.length);
+  return { moves: moves.length, sentences: moves.reduce((n, m) => n + m.yours.length, 0) };
+}
+
+function renderBankCard() {
+  const t = bankTotals();
+  document.getElementById('bank-sentences').textContent = bank ? t.sentences : '—';
+  document.getElementById('bank-moves').textContent = bank ? t.moves : '—';
+  const over = (bank?.connectives || []).filter(c => c.status === 'over');
+  const note = document.getElementById('bank-note');
+  if (bank?.error) note.textContent = 'Could not read samples: ' + bank.error;
+  else if (!bank?.samples?.length) note.textContent = 'Add a sample to start your phrase bank.';
+  else if (over.length) note.innerHTML = `<span style="color: var(--signal)">${over.length} connective${over.length > 1 ? 's' : ''} over the corpus budget</span> · open to see`;
+  else note.textContent = `${bank.stats.words.toLocaleString()} words · mean sentence ${bank.stats.mean_sentence_words} words`;
+}
+
+async function rebuildBank() {
+  const icon = document.getElementById('rebuild-icon');
+  icon.textContent = '…';
+  await loadBank(true);
+  icon.textContent = '↻';
+  const t = bankTotals();
+  toast(`Phrase bank updated — ${t.sentences} sentences in ${t.moves} moves`);
+  refreshCurrentView();
+}
+
+function refreshCurrentView() {
+  if (document.getElementById('overview-view').style.display !== 'none') showOverview();
+  else if (currentSampleId) renderSampleMoves(currentSampleId);
+}
+
+async function hidePhrase(id) {
+  try {
+    const r = await fetch('/api/rag/style/phrasebank/hide', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ ids: [id], hidden: true }),
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    bank = (await r.json()).bank;
+    renderBankCard(); renderSampleList(); refreshCurrentView();
+    toast('Removed from your phrase bank');
+  } catch (e) { toast('Could not hide: ' + e.message); }
+}
+
+async function restoreHidden() {
+  const r = await fetch('/api/rag/style/phrasebank/hide', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ ids: ['all'], hidden: false }),
+  });
+  if (r.ok) { bank = (await r.json()).bank; renderBankCard(); renderSampleList(); refreshCurrentView(); toast('Hidden sentences restored'); }
+}
+
+// ── Rendering helpers ────────────────────────────────────────────────
+function frameHtml(e) {
+  if (!e.parts) return escapeHtml(e.text);
+  return e.parts.map(([t, slot]) => slot ? escapeHtml(t) : `<b>${escapeHtml(t)}</b>`).join('');
+}
+function shortSec(sec) { return String(sec).replace(/^\d+\.\s*/, ''); }
+
+function phraseRow(mv, e, showSample) {
+  return `<div class="phrase-row">
+    <div class="flex-1 min-w-0">
+      <div class="move-tag">${escapeHtml(mv.move)} <span style="color: var(--ink-faint)">· ${escapeHtml(shortSec(mv.sec))}</span></div>
+      <div class="frame-line mt-0.5">${frameHtml(e)}</div>
+      <div class="text-[10.5px] font-mono mt-0.5" style="color: var(--ink-faint)">frame <span style="color: var(--ink-muted)">${escapeHtml(e.pattern)}</span>${showSample ? ' · ' + escapeHtml(e.sample) : ''}</div>
+    </div>
+    <button class="hide-btn" data-hide="${escapeHtml(e.id)}" title="Wrong move — leave this sentence out of the phrase bank">Not this move ✕</button>
+  </div>`;
+}
+
+// ── Views ─────────────────────────────────────────────────────────────
+function showOnly(id) {
+  for (const v of ['reader-view', 'overview-view', 'reader-edit-wrap', 'reader-empty']) {
+    document.getElementById(v).style.display = v === id ? (v === 'reader-edit-wrap' || v === 'reader-empty' ? 'flex' : 'block') : 'none';
+  }
+  document.getElementById('bank-card').classList.toggle('on', id === 'overview-view');
+}
+
+function showOverview() {
+  if (!samples.length) { showOnly('reader-empty'); document.getElementById('reader-header').style.display = 'none'; return; }
+  currentSampleId = null;
+  renderSampleList();
+  showOnly('overview-view');
+  document.getElementById('reader-header').style.display = 'flex';
+  document.getElementById('reader-actions').style.display = 'none';
+  document.getElementById('reader-title').textContent = 'Your phrase bank';
+  const st = bank?.stats || {};
+  document.getElementById('reader-meta').textContent =
+    `${(bank?.samples || []).length} samples · ${(st.words || 0).toLocaleString()} words · ${st.sentences || 0} sentences, ${st.matched || 0} matched to a move`;
+
+  const conns = (bank?.connectives || []).filter(c => c.count);
+  document.getElementById('ov-connectives').innerHTML = conns.length ? `
+    <table class="conn-table"><thead><tr><th>Marker</th><th class="num">Yours /1k words</th><th class="num">Corpus /1k words</th><th class="num">Count</th></tr></thead>
+    <tbody>${conns.map(c => `<tr><td class="font-mono text-[12px]">${escapeHtml(c.marker)}</td>
+      <td class="num ${c.status === 'over' ? 'over' : ''}">${c.yours_per_k}</td><td class="num">${c.corpus_per_k}</td><td class="num">${c.count}</td></tr>`).join('')}</tbody></table>
+    <p class="text-[11.5px] mt-2" style="color: var(--ink-faint)">Red = more than twice the rate measured in published prose. The Style Writer is told not to add more of these.</p>`
+    : '<p class="text-[12.5px]" style="color: var(--ink-faint)">None of the budgeted connectives appear in your samples.</p>';
+
+  const moves = (bank?.moves || []).filter(m => m.yours.length);
+  document.getElementById('ov-moves').innerHTML = moves.length
+    ? moves.map(mv => mv.yours.map(e => phraseRow(mv, e, true)).join('')).join('')
+    : '<p class="text-[12.5px]" style="color: var(--ink-faint)">No sentences matched a Phrase Bank frame yet.</p>';
+  document.getElementById('ov-restore').style.display = st.hidden ? 'inline' : 'none';
+  if (st.hidden) document.getElementById('ov-restore').textContent = `Restore ${st.hidden} hidden`;
+
+  const op = bank?.openers || [];
+  document.getElementById('ov-openers-wrap').style.display = op.length ? 'block' : 'none';
+  document.getElementById('ov-openers').innerHTML = op.map(o => `
+    <div class="phrase-row"><div class="flex-1 min-w-0">
+      <div class="frame-line"><b>${escapeHtml(o.opener)} …</b> <span class="font-mono text-[11px]" style="color: var(--ink-faint)">×${o.count}</span></div>
+      <div class="text-[12px] mt-0.5 clamp-2" style="color: var(--ink-faint)">${escapeHtml(o.example)}</div>
+    </div></div>`).join('');
+}
+
+function renderSampleMoves(id) {
+  const rows = [];
+  for (const mv of bank?.moves || []) for (const e of mv.yours) if (e.sample === id) rows.push(phraseRow(mv, e, false));
+  const meta = (bank?.samples || []).find(s => s.id === id);
+  document.getElementById('sample-moves-count').textContent = meta ? `${meta.matched} of ${meta.sentences} sentences` : '';
+  document.getElementById('sample-moves').innerHTML = rows.join('') ||
+    '<p class="text-[12.5px]" style="color: var(--ink-faint)">No sentence in this sample matches a Phrase Bank frame.</p>';
 }
 
 async function openSample(id) {
   currentSampleId = id;
-  loadSamples();
+  renderSampleList();
   try {
     const r = await fetch('/api/rag/style/' + encodeURIComponent(id));
     const d = await r.json();
@@ -116,23 +342,23 @@ async function openSample(id) {
 }
 
 function showReader(title, content) {
-  document.getElementById('reader-empty').style.display = 'none';
-  document.getElementById('reader-edit-wrap').style.display = 'none';
-  document.getElementById('reader-view').style.display = 'block';
+  showOnly('reader-view');
   document.getElementById('reader-header').style.display = 'flex';
+  document.getElementById('reader-actions').style.display = 'flex';
   document.getElementById('reader-title').textContent = title;
   document.getElementById('reader-meta').textContent = content.length.toLocaleString() + ' characters';
   document.getElementById('reader-content').textContent = content;
+  renderSampleMoves(title);
 }
 
 function newSample() {
   currentSampleId = null;
-  document.getElementById('reader-view').style.display = 'none';
-  document.getElementById('reader-empty').style.display = 'none';
+  renderSampleList();
+  showOnly('reader-edit-wrap');
   document.getElementById('reader-header').style.display = 'flex';
+  document.getElementById('reader-actions').style.display = 'none';
   document.getElementById('reader-title').textContent = 'New sample';
   document.getElementById('reader-meta').textContent = '';
-  document.getElementById('reader-edit-wrap').style.display = 'flex';
   document.getElementById('edit-title').value = '';
   document.getElementById('edit-content').value = '';
   document.getElementById('edit-title').focus();
@@ -149,8 +375,9 @@ async function saveSample() {
     });
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const d = await r.json();
-    toast('Saved ' + d.id);
-    await loadSamples();
+    await Promise.all([loadSamples(), loadBank()]);
+    const meta = (bank?.samples || []).find(s => s.id === d.id);
+    toast(meta ? `Saved — ${meta.matched} of ${meta.sentences} sentences added to your phrase bank` : 'Saved ' + d.id);
     openSample(d.id);
   } catch (e) {
     alert('Save failed: ' + e.message);
@@ -158,34 +385,36 @@ async function saveSample() {
 }
 
 function cancelEdit() {
-  if (currentSampleId) { openSample(currentSampleId); }
-  else {
-    document.getElementById('reader-edit-wrap').style.display = 'none';
-    document.getElementById('reader-header').style.display = 'none';
-    document.getElementById('reader-empty').style.display = 'flex';
-  }
+  if (currentSampleId) openSample(currentSampleId);
+  else showOverview();
 }
 
 async function deleteCurrent() {
   if (!currentSampleId) return;
-  if (!confirm('Delete this style sample?')) return;
+  if (!confirm('Delete this style sample? Its sentences leave your phrase bank too.')) return;
   await fetch('/api/rag/style/' + encodeURIComponent(currentSampleId), {method: 'DELETE'});
   currentSampleId = null;
-  document.getElementById('reader-view').style.display = 'none';
-  document.getElementById('reader-edit-wrap').style.display = 'none';
-  document.getElementById('reader-header').style.display = 'none';
-  document.getElementById('reader-empty').style.display = 'flex';
-  loadSamples();
+  await Promise.all([loadSamples(), loadBank()]);
+  showOverview();
 }
+
+// One delegated handler: sample buttons and "not this move" buttons carry
+// their ids in data-* attributes rather than inline JS strings.
+document.addEventListener('click', (ev) => {
+  const s = ev.target.closest('[data-sample]');
+  if (s) { openSample(s.dataset.sample); return; }
+  const h = ev.target.closest('[data-hide]');
+  if (h) hidePhrase(h.dataset.hide);
+});
 
 function toast(msg) {
   const t = document.createElement('div');
-  t.className = 'fixed bottom-4 right-4 bg-ink-800 dark:bg-ink-100 text-white dark:text-ink-900 px-4 py-2 rounded-lg text-sm shadow-lg z-50';
+  t.className = 'fixed bottom-4 right-4 px-4 py-2 rounded-lg text-sm shadow-lg z-50';
+  t.style.cssText = 'background: var(--ink); color: var(--surface)';
   t.textContent = msg;
   document.body.appendChild(t);
-  setTimeout(() => t.remove(), 2500);
+  setTimeout(() => t.remove(), 2800);
 }
-function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-function escapeJs(s)   { return String(s).replace(/'/g, "\\'"); }
+function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 </script>
 {% endblock %}

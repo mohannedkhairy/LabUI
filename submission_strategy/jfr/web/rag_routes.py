@@ -56,6 +56,8 @@ from generation.validate import validate_citations  # noqa: E402
 from generation.citations import build_citation_map, build_references, strip_model_references  # noqa: E402
 from generation.agents import AGENTS, get_agent, DEFAULT_AGENT, WRITING_SECTIONS  # noqa: E402
 from skills import loader as _skills  # noqa: E402  — progressive skill-pack loader
+from skills import style_bank as _style_bank  # noqa: E402  — phrases mined from style samples
+from skills.build_phrasebank_html import render as _render_phrasebank  # noqa: E402
 from retrieval.web_search import web_search as _web_search  # noqa: E402
 import memory as _mem  # noqa: E402
 import citations as _citations  # noqa: E402
@@ -1689,29 +1691,64 @@ def api_skill_brief(section: str = Query(""), mode: str = Query("draft"),
     mode = "revise" if mode == "revise" else "draft"
     stats = _skills.brief_stats(sec, mode, skill)
     if preview:
-        stats["text"] = _skills.build_writing_brief(sec, mode, skill)
+        # Same composition as generation.agents.resolve_system: the pack brief
+        # plus the author's own phrasing mined from their style samples.
+        personal = _style_bank.brief_slice(_style_bank.load(STYLE_DIR, skill), sec, mode)
+        stats["text"] = _skills.build_writing_brief(sec, mode, skill) + (
+            "\n\n" + personal if personal else "")
+        stats["personal_chars"] = len(personal)
     return stats
 
 
 @router.get("/skills/{skill}/phrasebank.html", response_class=HTMLResponse)
-def api_skill_phrasebank(skill: str):
-    """The browsable phrase-bank page for a skill pack, served raw.
+def api_skill_phrasebank(skill: str, mine: bool = Query(True)):
+    """The browsable phrase-bank page for a skill pack.
 
-    Embedded in an iframe by the /research/phrasebank tab so it keeps its own
-    self-contained styling; it also works opened directly. This is a build
-    artifact — regenerate with skills/build_phrasebank_html.py after editing
-    phrase-bank.md.
+    Rendered on request from the pack's phrase-bank.md, with the user's own
+    sentences (mined from their writing-style samples) merged into each move —
+    so it can never go stale. Embedded in an iframe by the /research/phrasebank
+    tab so it keeps its own self-contained styling; it also works opened
+    directly. `mine=false` renders the corpus-only page.
     """
-    if "/" in skill or ".." in skill:          # no traversal out of skills/
+    if not re.match(r"^[\w\-]+$", skill):       # no traversal out of skills/
         raise HTTPException(400, "bad skill name")
-    path = _skills.phrasebank_html(skill)
-    if path is None:
-        raise HTTPException(
-            404,
-            f"no phrase-bank page built for '{skill}' — run "
-            "python3 Local_Rag/rag/skills/build_phrasebank_html.py",
-        )
-    return HTMLResponse(path.read_text(encoding="utf-8"))
+    personal = _style_bank.load(STYLE_DIR, skill) if mine else None
+    try:
+        page, _ = _render_phrasebank(skill, personal)
+    except FileNotFoundError:
+        raise HTTPException(404, f"skill '{skill}' has no references/phrase-bank.md")
+    return HTMLResponse(page)
+
+
+@router.get("/skills/phrases")
+def api_skill_phrases(section: str = Query(""), skill: str = Query("")):
+    """Moves for one writing section (plus the general logical moves): the
+    pack's pattern frames, a few corpus exemplars, and the user's own sentences.
+    Feeds the Phrases panel in the writing workspace."""
+    skill = skill or _skills.DEFAULT_SKILL
+    if not _skills.is_installed(skill):
+        raise HTTPException(404, f"skill '{skill}' is not installed")
+    sec = (section or "").strip().lower() or None
+    title = _style_bank.section_bank_title(sec)
+    _, cards, _ = _style_bank.load_frames(skill)
+    bank = _style_bank.load(STYLE_DIR, skill)
+    mine = {(m["sec"], m["move"]): m["yours"] for m in bank.get("moves", [])}
+    out = []
+    for c in cards:
+        in_section = bool(title) and c["sec"].lower() == title.lower()
+        if not (in_section or c["sec"].startswith("1.")):
+            continue
+        out.append({
+            "sec": c["sec"], "move": c["move"], "general": c["sec"].startswith("1."),
+            "patterns": c["patterns"],
+            "corpus": [{"text": e["q"], "source": e["src"]} for e in c["ex"][:2]],
+            "yours": [{"id": y["id"], "text": y["text"], "sample": y["sample"],
+                       "pattern": y["pattern"]} for y in mine.get((c["sec"], c["move"]), [])],
+        })
+    # Section moves first, general logical moves after.
+    out.sort(key=lambda m: m["general"])
+    return {"section": sec, "bank_section": title, "moves": out,
+            "samples": len(bank.get("samples", []))}
 
 
 # ── /style — writing-style samples for the Style Writer agent ─────────────────
@@ -1751,6 +1788,39 @@ def api_style_create(body: StyleCreate):
         dest = STYLE_DIR / f"{safe}_{ts}.md"
     dest.write_text(content, encoding="utf-8")
     return {"id": dest.stem, "chars": len(content)}
+
+
+# ── /style/phrasebank — the user's phrase bank, mined from the samples ──────
+# Registered BEFORE /style/{sample_id}, which would otherwise read "phrasebank"
+# as a sample id. The bank rebuilds itself whenever a sample changes; these
+# endpoints expose it, force a rebuild, and let the user drop a mis-sorted line.
+@router.get("/style/phrasebank")
+def api_style_phrasebank():
+    return _style_bank.load(STYLE_DIR)
+
+
+@router.post("/style/phrasebank/rebuild")
+def api_style_phrasebank_rebuild():
+    return _style_bank.load(STYLE_DIR, force=True)
+
+
+class PhraseHide(BaseModel):
+    ids: list[str]
+    hidden: bool = True
+
+
+@router.post("/style/phrasebank/hide")
+def api_style_phrasebank_hide(body: PhraseHide):
+    """Hide sentences the matcher filed under the wrong move. `{"ids": ["all"],
+    "hidden": false}` restores everything."""
+    if not body.hidden and body.ids == ["all"]:
+        _style_bank.clear_hidden(STYLE_DIR)
+        return {"hidden_total": 0, "bank": _style_bank.load(STYLE_DIR)}
+    ids = [i for i in body.ids if re.fullmatch(r"[0-9a-f]{12}", i or "")]
+    if not ids:
+        raise HTTPException(422, "no valid sentence ids")
+    n = _style_bank.set_hidden(STYLE_DIR, ids, body.hidden)
+    return {"hidden_total": n, "bank": _style_bank.load(STYLE_DIR)}
 
 
 @router.get("/style/{sample_id}")

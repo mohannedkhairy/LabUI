@@ -13,9 +13,11 @@ works. Inside LabUI it sits in an iframe and follows the app's theme toggle via
 a postMessage bridge (`{type: 'labui-theme', theme: 'dark'|'light'}`), falling
 back to `prefers-color-scheme` when opened standalone.
 
-**Re-run this after editing phrase-bank.md** — the page is a build artifact, not
-a live view. Everything else in the skill is read at request time; this is the
-one thing that goes stale.
+Inside LabUI the page is rendered on request by `render()` (so it never goes
+stale), with the user's own sentences — mined from their writing-style samples
+by `skills/style_bank.py` — merged into each move under the source "You".
+Running this script writes the same page, without personal exemplars, to disk
+as a standalone artifact.
 
 Stdlib only.
 """
@@ -52,6 +54,8 @@ SOURCE_META = {
     "Cuntz-2010":      "Cuntz et al., PLoS Comput. Biol. 6 (2010)",
 }
 HOUSE_SOURCES = {"Kubelka-JCIS", "Khairy-2025"}
+MINE = "You"           # source key for sentences mined from the user's style samples
+SOURCE_META[MINE] = "Your own writing — mined from your style samples"
 
 QUOTE_RE = re.compile(r'^>\s*"(.+?)"\s*—\s*([A-Za-z0-9\-]+)(?:,\s*(.+))?$')
 
@@ -130,12 +134,38 @@ def md_inline(text: str) -> str:
     return t
 
 
+def _mine_q(e: dict) -> str:
+    """A personal exemplar with the frame's literal words emphasised, so the
+    reader sees the move inside their own sentence."""
+    parts = e.get("parts")
+    if not parts:
+        return html.escape(e["q"])
+    return "".join(html.escape(t) if slot else f"<b>{html.escape(t)}</b>" for t, slot in parts)
+
+
+def merge_personal(cards: list[dict], bank: dict | None) -> int:
+    """Append the user's mined sentences to the matching cards, in place."""
+    if not bank:
+        return 0
+    by_key = {(c["sec"], c["move"]): c for c in cards}
+    n = 0
+    for mv in bank.get("moves", []):
+        c = by_key.get((mv["sec"], mv["move"]))
+        if not c:
+            continue
+        mine = [{"q": y["text"], "src": MINE, "sec": y.get("sample", ""), "parts": y.get("parts")}
+                for y in mv.get("yours", [])]
+        c["ex"] = mine + c["ex"]          # yours first: it is the point of the page
+        n += len(mine)
+    return n
+
+
 def card_html(c: dict) -> str:
     pats = "".join(f'<button class="pat" title="click to copy">{md_inline(p)}</button>'
                    for p in c["patterns"])
     exs = "".join(
-        f'<blockquote class="{"house" if e["src"] in HOUSE_SOURCES else ""}">'
-        f'<span class="q">{html.escape(e["q"])}</span>'
+        f'<blockquote class="{"mine" if e["src"] == MINE else "house" if e["src"] in HOUSE_SOURCES else ""}">'
+        f'<span class="q">{_mine_q(e) if e["src"] == MINE else html.escape(e["q"])}</span>'
         f'<cite title="{html.escape(SOURCE_META.get(e["src"], e["src"]))}">{html.escape(e["src"])}'
         + (f' <span class="sec">· {html.escape(e["sec"])}</span>' if e["sec"] else "")
         + "</cite></blockquote>"
@@ -165,57 +195,65 @@ html[data-theme="dark"]{--surface:#141210;--raised:#1c1a16;--sunken:#171512;--in
       --faint:#7a7266;--line:#2b2721;--firm:#3c362d;--signal:#ff6a45;--signal-ink:#ff8f73;--wash:#2a1611;
       --data:#2fbfac;--house:#e0a94a;--grid:rgba(242,236,226,.05)}
 *{box-sizing:border-box}
-body{margin:0;color:var(--ink);font:15px/1.65 'Public Sans',system-ui,sans-serif;
+body{margin:0;color:var(--ink);font:15px/1.65 var(--font-sans,'Public Sans',system-ui,sans-serif);
      background-color:var(--surface);
      background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);
      background-size:26px 26px}
 header{position:sticky;top:0;z-index:20;background:var(--surface);border-bottom:1px solid var(--line);padding:16px 22px 10px}
-h1{margin:0 0 2px;font-family:'Fraunces',Georgia,serif;font-size:23px;font-weight:600;
+h1{margin:0 0 2px;font-family:var(--font-display,'Fraunces',Georgia,serif);font-size:23px;font-weight:600;
    font-variation-settings:'SOFT' 0,'WONK' 1,'opsz' 60;letter-spacing:-.015em}
 .sub{color:var(--mut);font-size:12.5px;margin-bottom:11px;max-width:74ch}
 .controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 input[type=search]{flex:1 1 240px;min-width:200px;padding:8px 12px;border:1px solid var(--line);border-radius:6px;
-                   background:var(--sunken);color:var(--ink);font:14px 'Public Sans',system-ui,sans-serif}
+                   background:var(--sunken);color:var(--ink);font:14px var(--font-sans,'Public Sans',system-ui,sans-serif)}
 input[type=search]:focus{outline:none;border-color:var(--signal)}
 .chips{display:flex;gap:5px;flex-wrap:wrap;margin-top:9px}
 .chip{border:1px solid var(--line);background:var(--raised);color:var(--mut);border-radius:6px;padding:3px 9px;
-      font:10.5px/1.5 'JetBrains Mono',monospace;letter-spacing:.05em;text-transform:uppercase;cursor:pointer}
+      font:10.5px/1.5 var(--font-mono,'JetBrains Mono',monospace);letter-spacing:.05em;text-transform:uppercase;cursor:pointer}
 .chip:hover{border-color:var(--firm);color:var(--ink)}
 .chip.on{background:var(--signal);border-color:var(--signal);color:#fff}
 main{max-width:1180px;margin:0 auto;padding:20px 22px 80px;column-width:400px;column-gap:18px}
 .card,.panel{break-inside:avoid;background:var(--raised);border:1px solid var(--line);border-radius:10px;
              padding:15px 17px;margin:0 0 16px;display:inline-block;width:100%}
 .card[hidden],.panel[hidden],#empty[hidden]{display:none!important}
-.card h3{margin:0 0 9px;font-family:'Fraunces',Georgia,serif;font-size:15.5px;font-weight:600;
+.card h3{margin:0 0 9px;font-family:var(--font-display,'Fraunces',Georgia,serif);font-size:15.5px;font-weight:600;
          display:flex;justify-content:space-between;align-items:baseline;gap:10px}
-.tag{font:9.5px 'JetBrains Mono',monospace;color:var(--faint);white-space:nowrap;letter-spacing:.1em;
+.tag{font:9.5px var(--font-mono,'JetBrains Mono',monospace);color:var(--faint);white-space:nowrap;letter-spacing:.1em;
      text-transform:uppercase;flex:0 0 auto}
 .pats{margin:0 0 11px;display:flex;flex-wrap:wrap;gap:5px}
-.pat{font:12/1.45 'JetBrains Mono',monospace;font-size:12px;background:var(--sunken);color:var(--ink);
+.pat{font:12/1.45 var(--font-mono,'JetBrains Mono',monospace);font-size:12px;background:var(--sunken);color:var(--ink);
      border:1px solid var(--line);border-radius:5px;padding:3px 8px;cursor:copy;text-align:left}
 .pat:hover{border-color:var(--signal)}
 .pat.copied{background:var(--signal);border-color:var(--signal);color:#fff}
 blockquote{margin:0 0 9px;padding:7px 0 7px 12px;border-left:2px solid var(--line);font-size:14px;
-           font-family:'Fraunces',Georgia,serif;font-variation-settings:'SOFT' 0,'opsz' 14}
+           font-family:var(--font-display,'Fraunces',Georgia,serif);font-variation-settings:'SOFT' 0,'opsz' 14}
 blockquote.house{border-left-color:var(--house)}
 .q{display:block}.q::before{content:'"'}.q::after{content:'"'}
-cite{display:block;margin-top:4px;font:10.5px 'JetBrains Mono',monospace;color:var(--faint);font-style:normal;
+cite{display:block;margin-top:4px;font:10.5px var(--font-mono,'JetBrains Mono',monospace);color:var(--faint);font-style:normal;
      letter-spacing:.03em}
 blockquote.house cite{color:var(--house)}
+blockquote.mine{border-left-color:var(--data)}
+blockquote.mine cite{color:var(--data)}
+blockquote.mine b{font-weight:600;color:var(--data)}
+.chip.src.me{border-color:var(--data);color:var(--data)}
+.chip.src.me.on{background:var(--data);border-color:var(--data);color:#fff}
+.over{color:var(--signal);font-weight:600}
+.opener{display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid var(--line);font-size:13px}
+.opener:last-child{border-bottom:0}
 .sec{opacity:.75}
 .note{margin:9px 0 0;font-size:13px;color:var(--mut);line-height:1.55}
 .bl{margin:0 0 4px;padding-left:18px;font-size:13px;line-height:1.55}
 .bl li{margin-bottom:6px}
 table{border-collapse:collapse;width:100%;font-size:12.5px}
 td,th{padding:4px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
-th{font:9.5px 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);font-weight:500}
-.num{text-align:right;font-family:'JetBrains Mono',monospace;white-space:nowrap}
-code{font:12px 'JetBrains Mono',monospace;background:var(--sunken);border:1px solid var(--line);
+th{font:9.5px var(--font-mono,'JetBrains Mono',monospace);letter-spacing:.1em;text-transform:uppercase;color:var(--faint);font-weight:500}
+.num{text-align:right;font-family:var(--font-mono,'JetBrains Mono',monospace);white-space:nowrap}
+code{font:12px var(--font-mono,'JetBrains Mono',monospace);background:var(--sunken);border:1px solid var(--line);
      padding:1px 4px;border-radius:4px}
-kbd{font:10px 'JetBrains Mono',monospace;border:1px solid var(--firm);border-bottom-width:2px;border-radius:4px;
+kbd{font:10px var(--font-mono,'JetBrains Mono',monospace);border:1px solid var(--firm);border-bottom-width:2px;border-radius:4px;
     padding:1px 4px;color:var(--mut)}
 .empty{color:var(--mut);font-size:14px;padding:30px 0}
-#count{font:11px 'JetBrains Mono',monospace;color:var(--faint);margin-left:auto;letter-spacing:.06em}
+#count{font:11px var(--font-mono,'JetBrains Mono',monospace);color:var(--faint);margin-left:auto;letter-spacing:.06em}
 """
 
 JS = """
@@ -225,7 +263,7 @@ let fSec='*',fSrc='*';
 function apply(){
  const t=q.value.trim().toLowerCase();let n=0;
  cards.forEach(c=>{
-  const ok=(fSec==='*'||c.dataset.sec===fSec)&&(fSrc==='*'||c.dataset.srcs.includes(fSrc))
+  const ok=(fSec==='*'||c.dataset.sec===fSec)&&(fSrc==='*'||c.dataset.srcs.split(' ').includes(fSrc))
    &&(!t||c.dataset.text.includes(t));
   c.hidden=!ok;if(ok)n++;
  });
@@ -250,20 +288,30 @@ document.addEventListener('keydown',e=>{if(e.key==='/'&&document.activeElement!=
 // prefers-color-scheme media query in the stylesheet.
 window.addEventListener('message',e=>{
  const d=e.data;
- if(d&&d.type==='labui-theme'&&(d.theme==='dark'||d.theme==='light'))
-   document.documentElement.setAttribute('data-theme',d.theme);
+ if(!d||d.type!=='labui-theme')return;
+ if(d.theme==='dark'||d.theme==='light')document.documentElement.setAttribute('data-theme',d.theme);
+ // The shell may also pass its live palette and fonts so the page follows
+ // whichever LabUI theme is selected, not just light/dark.
+ if(d.vars&&typeof d.vars==='object')for(const k in d.vars)
+   if(/^--[\\w-]+$/.test(k))document.documentElement.style.setProperty(k,String(d.vars[k]));
+ if(typeof d.fontHref==='string'&&d.fontHref.indexOf('https://fonts.googleapis.com/')===0){
+   let l=document.getElementById('labui-font');
+   if(!l){l=document.createElement('link');l.rel='stylesheet';l.id='labui-font';document.head.appendChild(l);}
+   if(l.href!==d.fontHref)l.href=d.fontHref;}
 });
 if(window.parent!==window) window.parent.postMessage({type:'labui-phrasebank-ready'},'*');
 apply();
 """
 
 
-def build(skill: str = DEFAULT_SKILL, out: Path | None = None) -> Path:
+def render(skill: str = DEFAULT_SKILL, personal: dict | None = None) -> tuple[str, dict]:
+    """→ (page_html, counts). `personal` is a bank from skills/style_bank.py."""
     src = SKILLS_DIR / skill / "references" / "phrase-bank.md"
     if not src.is_file():
-        raise SystemExit(f"no phrase-bank.md in skill '{skill}' ({src})")
+        raise FileNotFoundError(f"no phrase-bank.md in skill '{skill}' ({src})")
     md = src.read_text(encoding="utf-8")
     cards, budget = parse(md)
+    n_mine = merge_personal(cards, personal)
 
     secnames: list[str] = []
     for c in cards:
@@ -275,12 +323,14 @@ def build(skill: str = DEFAULT_SKILL, out: Path | None = None) -> Path:
         for s in secnames)
     used = {e["src"] for c in cards for e in c["ex"]}
     srcchips = "".join(
-        f'<button class="chip src" data-s="{k}" title="{html.escape(SOURCE_META.get(k, k))}">{k}</button>'
-        for k in SOURCE_META if k in used)
+        f'<button class="chip src{" me" if k == MINE else ""}" data-s="{k}" '
+        f'title="{html.escape(SOURCE_META.get(k, k))}">{k}</button>'
+        for k in [MINE, *(k for k in SOURCE_META if k != MINE)] if k in used)
     budget_rows = "".join(
         f'<tr><td><code>{html.escape(a)}</code></td><td class="num">{html.escape(b)}</td>'
         f'<td>{md_inline(c)}</td></tr>' for a, b, c in budget)
-    n_ex = sum(len(c["ex"]) for c in cards)
+    n_ex = sum(len(c["ex"]) for c in cards) - n_mine
+    personal_html = _personal_panels(personal, n_mine)
 
     page = f"""<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -288,14 +338,15 @@ def build(skill: str = DEFAULT_SKILL, out: Path | None = None) -> Path:
 <header>
 <h1>Phrase Bank</h1>
 <div class="sub">{len(cards)} rhetorical moves &middot; {n_ex} attested exemplars, each verified verbatim
-against ~76,000 words of published prose from 15 papers. Gold rule = house papers.
+against ~76,000 words of published prose from 15 papers. Gold rule = house papers{
+"; teal rule = <strong>your own sentences</strong> (" + str(n_mine) + ", from your style samples)" if n_mine else ""}.
 Click any pattern to copy. Press <kbd>/</kbd> to search.</div>
 <div class="controls"><input type="search" id="q" placeholder="Search patterns, exemplars, notes… (e.g. 'gap', 'hedge', 'consistent with')" autocomplete="off"><span id="count"></span></div>
 <div class="chips" id="secs"><button class="chip on" data-f="*">All sections</button>{chips}</div>
 <div class="chips" id="srcs"><button class="chip src on" data-s="*">All sources</button>{srcchips}</div>
 </header>
 <main id="main">
-<div class="panel"><h3 style="margin:0 0 8px;font-size:15px">The connective budget (measured)</h3>
+{personal_html}<div class="panel"><h3 style="margin:0 0 8px;font-size:15px">The connective budget (measured)</h3>
 <table><thead><tr><th>Marker</th><th class="num">per 1,000 w</th><th>Budget for a 6,000-word paper</th></tr></thead>
 <tbody>{budget_rows}</tbody></table>
 <p class="note"><strong>Zero occurrences</strong> in the whole corpus: <em>robust, delve, realm,
@@ -305,11 +356,48 @@ draft is a defect.</p></div>
 <div class="empty" id="empty" hidden>No moves match that search.</div>
 </main>
 <script>{JS}</script></body></html>"""
+    return page, {"moves": len(cards), "exemplars": n_ex, "mine": n_mine, "budget_rows": len(budget)}
 
+
+def _personal_panels(bank: dict | None, n_mine: int) -> str:
+    """Two panels summarising the user's samples against the corpus: connective
+    rates next to the measured budget, and their habitual sentence openers."""
+    if not bank or not bank.get("samples"):
+        return ""
+    st = bank.get("stats", {})
+    rows = "".join(
+        f'<tr><td><code>{html.escape(c["marker"])}</code></td>'
+        f'<td class="num{" over" if c["status"] == "over" else ""}">{c["yours_per_k"]}</td>'
+        f'<td class="num">{c["corpus_per_k"]}</td></tr>'
+        for c in bank.get("connectives", []) if c["count"])
+    conn = (f'<table><thead><tr><th>Marker</th><th class="num">yours /1k w</th>'
+            f'<th class="num">corpus /1k w</th></tr></thead><tbody>{rows}</tbody></table>'
+            if rows else '<p class="note">None of the budgeted connectives appear in your samples.</p>')
+    openers = "".join(
+        f'<div class="opener"><span><code>{html.escape(o["opener"])} …</code></span>'
+        f'<span class="num">×{o["count"]}</span></div>'
+        for o in bank.get("openers", [])[:10])
+    return (
+        '<div class="panel" data-personal><h3 style="margin:0 0 6px;font-size:15px">Your samples against the corpus</h3>'
+        f'<p class="note" style="margin:0 0 8px">{len(bank["samples"])} samples · {st.get("words", 0):,} words · '
+        f'{st.get("sentences", 0)} sentences, {n_mine} matched to a move · mean sentence '
+        f'{st.get("mean_sentence_words", 0)} words. Red = more than twice the corpus rate.</p>{conn}</div>'
+        + ('<div class="panel" data-personal><h3 style="margin:0 0 6px;font-size:15px">Openers you reach for</h3>'
+           '<p class="note" style="margin:0 0 6px">Three-word sentence openings used more than once '
+           'across your samples — candidate frames of your own.</p>' + openers + '</div>'
+           if openers else "")
+    )
+
+
+def build(skill: str = DEFAULT_SKILL, out: Path | None = None) -> Path:
+    try:
+        page, n = render(skill)
+    except FileNotFoundError as e:
+        raise SystemExit(str(e))
     dest = out or (SKILLS_DIR / skill / "phrase-bank.html")
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(page, encoding="utf-8")
-    print(f"{dest}  —  {len(cards)} moves, {n_ex} exemplars, {len(budget)} budget rows, "
+    print(f"{dest}  —  {n['moves']} moves, {n['exemplars']} exemplars, {n['budget_rows']} budget rows, "
           f"{len(page):,} bytes")
     return dest
 

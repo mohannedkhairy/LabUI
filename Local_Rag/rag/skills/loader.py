@@ -84,7 +84,9 @@ def list_skills() -> list[dict]:
             "name": meta.get("name", d.name),
             "description": meta.get("description", ""),
             "sections": SECTIONS,
-            "has_phrasebank": phrasebank_html(d.name) is not None,
+            # The page is rendered on request from phrase-bank.md (see
+            # build_phrasebank_html.render), so the source file is what counts.
+            "has_phrasebank": (d / "references" / "phrase-bank.md").is_file(),
         })
     return out
 

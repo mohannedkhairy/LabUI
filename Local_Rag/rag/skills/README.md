@@ -7,12 +7,13 @@ the Claude skill convention:
 skills/
   loader.py                    # progressive loader — assembles prompt slices
   audit.py                     # adapter over a pack's scripts/audit_draft.py
-  build_phrasebank_html.py     # builds the browsable Phrase Bank page
+  build_phrasebank_html.py     # renders the browsable Phrase Bank page
+  style_bank.py                # your phrase bank — moves mined from your style samples
   <skill-name>/
     SKILL.md                   # frontmatter (name, description) + overview
     references/*.md            # the detailed guides
     scripts/audit_draft.py     # optional; exposes audit_text(text, section) -> dict
-    phrase-bank.html           # build artifact — see "Phrase Bank tab" below
+    phrase-bank.html           # standalone copy of the page (the app renders it live)
 ```
 
 ## Why nothing is ever loaded whole
@@ -50,7 +51,9 @@ at a fraction of the cost. The exemplars remain in the files for humans to read.
 | Status / preview | `GET /api/rag/skills`, `GET /api/rag/skills/brief?section=results&preview=true` |
 | Audit | `POST /api/rag/writing/audit`, `GET /api/rag/projects/{id}/files/{slug}/audit`, `GET /api/rag/projects/{id}/audit` |
 | UI | `templates/writing_workspace.html` (Draft / Revise / Audit), `templates/research_chat.html` (section picker), `templates/research_phrasebank.html` (Phrase Bank tab) |
-| Phrase Bank page | `GET /api/rag/skills/{skill}/phrasebank.html`, embedded by `GET /research/phrasebank` |
+| Phrase Bank page | `GET /api/rag/skills/{skill}/phrasebank.html` (rendered live, your sentences merged in), embedded by `GET /research/phrasebank` |
+| Your phrase bank | `skills/style_bank.py`; `GET /api/rag/style/phrasebank`, `POST …/rebuild`, `POST …/hide` |
+| Phrases panel | `GET /api/rag/skills/phrases?section=results` → writing workspace drawer → Phrases |
 
 Everything degrades gracefully. Remove the pack folder and `resolve_system()` falls
 back to the built-in rules in `agents.py`; the audit endpoints return 503 and the UI
@@ -62,23 +65,42 @@ disables its buttons.
 rhetorical moves, reusable patterns, and attested exemplars, with search and
 per-section / per-source filters. Clicking a pattern copies it.
 
-It is a **self-contained page inside an iframe**, not a Jinja template. That keeps
-it byte-identical to the standalone artifact (it works opened directly in a
-browser) and keeps its serif typography and column layout from fighting Tailwind.
-The one thing that crosses the boundary is the theme: `research_phrasebank.html`
-posts `{type:'labui-theme', theme:'dark'|'light'}` into the frame on load and
-whenever the sidebar toggle flips the `dark` class, and the page falls back to
+It is a **self-contained page inside an iframe**, not a Jinja template, so its serif
+typography and column layout do not fight Tailwind. The app renders it **on request**
+from `references/phrase-bank.md` (`build_phrasebank_html.render()`), so it never goes
+stale. The shell posts its theme into the frame — light/dark, the selected palette's
+colour variables, and the font set's stylesheet — and the page falls back to
 `prefers-color-scheme` when opened standalone.
 
-**It is a build artifact and it goes stale.** Everything else in a pack is read at
-request time; this page is not. After editing `references/phrase-bank.md`:
+`python3 Local_Rag/rag/skills/build_phrasebank_html.py` still writes a standalone copy
+(`<pack>/phrase-bank.html`, without your sentences) for use outside the app.
 
-```bash
-python3 Local_Rag/rag/skills/build_phrasebank_html.py
-```
+## Your phrase bank (style samples → moves)
 
-The tab shows a "No phrase bank built" panel with that command when the file is
-missing, so a fresh pack fails legibly rather than silently.
+`style_bank.py` reads the writing-style samples (Research Lab → Writing Style),
+splits them into sentences (aware of `et al.`, `Fig.`, `e.g.`…), and matches each one
+against the pack's pattern frames — `However, X.` becomes `^However,\s+(.+?)`, and so
+on, with the most specific frame winning. A sentence that fits a frame becomes **your
+own exemplar of that move**. It also measures your connective rates against the
+phrase bank's corpus budget and lists the sentence openers you reuse.
+
+The result is cached at `<RAG_DATA_DIR>/style/.phrasebank.json` and rebuilt
+automatically whenever a sample (or `phrase-bank.md`) changes. Sentences filed under
+the wrong move can be hidden from the Writing Style page ("Not this move").
+
+Where it shows up:
+
+- **Phrase Bank page** — your sentences sit first in each move (teal, source "You"),
+  plus panels comparing your connective rates with the corpus.
+- **Writing Style page** — every sample shows which move each sentence performs,
+  with the frame's words in bold.
+- **Style Writer prompts** — `generation/agents.py:resolve_system()` appends
+  `style_bank.brief_slice()`: your sentences for the moves of the section being
+  drafted, and the connectives you already over-use. Unlike corpus exemplars (stripped
+  because a local model copies them), these are your own words, so echoing their
+  rhythm is the point.
+- **Writing workspace → Phrases** — the section's frames (click to insert, first blank
+  selected) with your sentences and two corpus exemplars under each.
 
 ## Adding or updating a pack
 

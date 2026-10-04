@@ -1,11 +1,18 @@
 {% extends "base.html" %}
 {% block title %}Phrase Bank{% endblock %}
-{% block heading %}Research Lab — Phrase Bank{% endblock %}
+{% block heading %}Phrase Bank{% endblock %}
+{% block subtitle %}<span id="pb-subtitle">Rhetorical moves from published prose — with your own sentences beside them</span>{% endblock %}
 {% block header_actions %}
-  <a id="pb-open" href="#" target="_blank" rel="noopener"
-     class="text-sm font-medium px-4 py-2 rounded-lg border border-ink-200 dark:border-ink-700 text-ink-600 dark:text-ink-300 hover:border-brand-500 hover:text-brand-600 dark:hover:text-brand-300 flex items-center gap-2">
+  <a href="/research/style" class="toolbar-btn" title="Your writing-style samples — where your sentences come from">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+    Writing Style
+  </a>
+  <button id="pb-update" onclick="updateFromSamples()" class="toolbar-btn" title="Re-read your style samples and re-sort their sentences into the moves">
+    <span id="pb-update-icon">↻</span> Update from samples
+  </button>
+  <a id="pb-open" href="#" target="_blank" rel="noopener" class="toolbar-btn" title="Open the phrase bank on its own">
     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
-    Open in new tab
+    New tab
   </a>
 {% endblock %}
 
@@ -13,19 +20,18 @@
 <div class="h-[calc(100vh-11rem)] flex flex-col">
   <!-- Not installed / not built -->
   <div id="pb-missing" class="tile p-8 text-center hidden">
-    <h3 class="font-semibold text-sm mb-2">No phrase bank built</h3>
-    <p class="text-xs text-ink-500 dark:text-ink-400 max-w-lg mx-auto leading-relaxed">
-      The page is a build artifact generated from the skill pack's
-      <span class="font-mono">references/phrase-bank.md</span>. Generate it with:
+    <h3 class="font-semibold text-sm mb-2">No phrase bank installed</h3>
+    <p class="text-xs max-w-lg mx-auto leading-relaxed" style="color: var(--ink-muted)">
+      The page is rendered from a skill pack's
+      <span class="font-mono">references/phrase-bank.md</span>, under
+      <span class="font-mono">Local_Rag/rag/skills/&lt;pack&gt;/</span>. Install a pack and reload.
     </p>
-    <pre class="mt-3 inline-block text-left text-[11px] font-mono bg-ink-50 dark:bg-ink-800 border border-ink-200 dark:border-ink-700 rounded-lg px-4 py-2.5">python3 Local_Rag/rag/skills/build_phrasebank_html.py</pre>
-    <p class="text-xs text-ink-400 mt-3">Then reload this page.</p>
   </div>
 
   <div id="pb-loading" class="tile p-8 text-center text-sm text-ink-400">Loading phrase bank…</div>
 
   <iframe id="pb-frame" title="Phrase bank"
-          class="hidden flex-1 w-full rounded-xl border border-ink-200 dark:border-ink-800 bg-white dark:bg-ink-900 shadow-soft dark:shadow-soft-dark"
+          class="hidden flex-1 w-full tile tile-flush"
           referrerpolicy="no-referrer"></iframe>
 </div>
 {% endblock %}
@@ -46,11 +52,55 @@ function pbTheme() {
   return document.documentElement.classList.contains('dark') ? 'dark' : 'light';
 }
 
+// The page's own stylesheet names its colours differently (--mut, --firm,
+// --wash…); map the shell's live values onto those names so it follows the
+// selected LabUI theme and fonts, not only light/dark.
+const PB_VAR_MAP = {
+  '--surface': '--surface', '--raised': '--raised', '--sunken': '--sunken', '--ink': '--ink',
+  '--mut': '--ink-muted', '--faint': '--ink-faint', '--line': '--line', '--firm': '--line-firm',
+  '--signal': '--signal', '--signal-ink': '--signal-ink', '--wash': '--signal-wash',
+  '--data': '--data', '--house': '--warn', '--grid': '--grid',
+  '--font-sans': '--font-sans', '--font-display': '--font-display', '--font-mono': '--font-mono',
+};
 function pushTheme() {
   const f = document.getElementById('pb-frame');
   if (!f || !f.contentWindow) return;
-  f.contentWindow.postMessage({type: 'labui-theme', theme: pbTheme()}, '*');
+  const cs = getComputedStyle(document.documentElement);
+  const vars = {};
+  for (const [inner, outer] of Object.entries(PB_VAR_MAP)) {
+    const v = cs.getPropertyValue(outer).trim();
+    if (v) vars[inner] = v;
+  }
+  const fontHref = document.getElementById('font-css')?.href || null;
+  f.contentWindow.postMessage({type: 'labui-theme', theme: pbTheme(), vars, fontHref}, '*');
 }
+
+async function updateFromSamples() {
+  const icon = document.getElementById('pb-update-icon');
+  icon.textContent = '…';
+  try {
+    const r = await fetch('/api/rag/style/phrasebank/rebuild', { method: 'POST' });
+    const b = await r.json();
+    const n = (b.moves || []).reduce((k, m) => k + m.yours.length, 0);
+    setSubtitle(b);
+    pbReady = false;
+    document.getElementById('pb-frame').contentWindow.location.reload();
+    icon.textContent = '✓';
+    setTimeout(() => { icon.textContent = '↻'; }, 1500);
+    if (!b.samples || !b.samples.length) alert('No style samples yet — add some on the Writing Style page.');
+    else console.info(`phrase bank: ${n} of your sentences across ${b.samples.length} samples`);
+  } catch (e) { icon.textContent = '↻'; alert('Update failed: ' + e.message); }
+}
+
+function setSubtitle(b) {
+  const el = document.getElementById('pb-subtitle');
+  if (!el || !b) return;
+  const n = (b.moves || []).reduce((k, m) => k + m.yours.length, 0);
+  el.textContent = (b.samples || []).length
+    ? `Rhetorical moves from published prose — ${n} of your own sentences, from ${b.samples.length} style samples, filed beside them`
+    : 'Rhetorical moves from published prose — add style samples to see your own sentences beside them';
+}
+fetch('/api/rag/style/phrasebank').then(r => r.json()).then(setSubtitle).catch(() => {});
 
 // The page announces itself once its script runs; that is the earliest safe
 // moment to push a theme.
@@ -58,10 +108,10 @@ window.addEventListener('message', (e) => {
   if (e.data && e.data.type === 'labui-phrasebank-ready') { pbReady = true; pushTheme(); }
 });
 
-// Follow the sidebar's theme toggle. base.html toggles the `dark` class on
-// <html>, so observe that rather than patching its function.
+// Follow the shell's appearance: base.html flips the `dark` class and the
+// data-palette / data-font attributes on <html>, so observe those.
 new MutationObserver(() => { if (pbReady) pushTheme(); })
-  .observe(document.documentElement, {attributes: true, attributeFilter: ['class']});
+  .observe(document.documentElement, {attributes: true, attributeFilter: ['class', 'data-palette', 'data-font']});
 
 (async function initPhraseBank() {
   const frame = document.getElementById('pb-frame');

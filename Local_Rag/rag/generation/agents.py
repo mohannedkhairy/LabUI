@@ -492,6 +492,16 @@ def resolve_system(
     except Exception:
         brief = ""
 
-    if not brief:
-        return base + _WRITING_FALLBACK
-    return base + "\n\n" + brief
+    # The author's own phrasing for this section's moves, mined from their
+    # writing-style samples (skills/style_bank.py). Rides along with either the
+    # pack brief or the built-in fallback; empty when there are no samples.
+    personal = ""
+    try:
+        from config import STYLE_DIR
+        from skills.style_bank import brief_slice, load
+        personal = brief_slice(load(STYLE_DIR, skill), section, mode)
+    except Exception:
+        personal = ""
+
+    out = base + ("\n\n" + brief if brief else _WRITING_FALLBACK)
+    return out + ("\n\n" + personal if personal else "")
