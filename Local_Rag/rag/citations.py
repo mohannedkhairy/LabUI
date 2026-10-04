@@ -232,7 +232,10 @@ def render_bibtex(records: list[dict[str, Any]] | None = None) -> str:
         fields = []
         for name, value in (("author", c.get("authors")), ("title", c.get("title")), ("year", c.get("year")), ("journal", c.get("journal")), ("volume", c.get("volume")), ("number", c.get("issue")), ("pages", c.get("pages")), ("publisher", c.get("publisher")), ("doi", c.get("doi")), ("url", c.get("url"))):
             if value:
-                fields.append(f"  {name:<10}= {{{str(value).replace('{', '\\{').replace('}', '\\}')}}},")
+                # Escape outside the f-string: backslashes inside f-string
+                # expressions are a SyntaxError before Python 3.12.
+                escaped = str(value).replace('{', '\\{').replace('}', '\\}')
+                fields.append(f"  {name:<10}= {{{escaped}}},")
         lines.append(f"@article{{{c.get('citation_key') or c.get('key') or 'reference'},")
         lines.extend(fields)
         lines.append("}")

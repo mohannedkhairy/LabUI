@@ -656,7 +656,7 @@
 
   <!-- ── Main ───────────────────────────────────────────────────── -->
   <main class="flex-1 overflow-y-auto scroll-thin app-main">
-    <header class="sticky top-0 z-10 px-4 sm:px-6 lg:px-8 pt-5 lg:pt-7 pb-4 lg:pb-5 flex items-end justify-between gap-3 lg:gap-4"
+    <header class="sticky top-0 z-10 px-4 sm:px-6 lg:px-8 pt-5 lg:pt-7 pb-4 lg:pb-5 flex flex-wrap sm:flex-nowrap items-end justify-between gap-3 lg:gap-4"
             style="background: linear-gradient(to bottom, var(--surface) 62%, color-mix(in srgb, var(--surface) 85%, transparent) 88%, transparent)">
       <button id="mobile-nav-button" type="button"
               class="lg:hidden flex-shrink-0 self-center p-2 -ml-2 rounded-md" style="color: var(--ink-muted)"
@@ -669,7 +669,7 @@
         <h1 id="page-title" class="text-[24px] sm:text-[30px] leading-[1.1]" style="color: var(--ink)">{% block heading %}{% endblock %}</h1>
         <p class="text-[13px] mt-1.5" style="color: var(--ink-muted)">{% block subtitle %}{% endblock %}</p>
       </div>
-      <div class="flex gap-2 flex-wrap justify-end flex-shrink-0 pb-1">{% block header_actions %}{% endblock %}</div>
+      <div class="flex gap-2 flex-wrap w-full sm:w-auto justify-start sm:justify-end flex-shrink-0 pb-1 empty:hidden">{% block header_actions %}{% endblock %}</div>
     </header>
     <div id="page-body" class="px-4 sm:px-6 lg:px-8 pb-10">
       {% block content %}{% endblock %}
