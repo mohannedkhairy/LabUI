@@ -1005,6 +1005,11 @@ def research_upload_page(request: Request):
     return templates.TemplateResponse(request, "research_upload.html", {})
 
 
+@app.get("/review", response_class=HTMLResponse)
+def review_page(request: Request, paper_id: str = ""):
+    return templates.TemplateResponse(request, "review.html", {"paper_id": paper_id})
+
+
 @app.get("/research/paper/{paper_id}/view", response_class=HTMLResponse)
 def research_paper_view_page(request: Request, paper_id: str):
     return templates.TemplateResponse(request, "research_paper_view.html", {"paper_id": paper_id})
