@@ -130,12 +130,15 @@ function renderResult(r, idx) {
         <div class="flex-1 min-w-0">
           <h3 class="font-semibold text-sm leading-snug text-ink-800 dark:text-ink-100">${escapeHtml(r.title || r.paper_id)}</h3>
           <div class="text-[11px] text-ink-400 mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
-            <span class="font-mono">${escapeHtml(r.paper_id)}</span>
+            <span class="font-mono">@${escapeHtml(r.citation_key || r.paper_id)}</span>
             <span>·</span>
             <span>${escapeHtml(r.section_name || '')}</span>
             <span>·</span>
             <span>p. ${r.page_start || '?'}${r.page_end && r.page_end !== r.page_start ? '–' + r.page_end : ''}</span>
             ${r.authors ? `<span>·</span><span class="truncate max-w-[40ch]">${escapeHtml(r.authors)}</span>` : ''}
+            ${r.year ? `<span>·</span><span>${escapeHtml(r.year)}</span>` : ''}
+            ${r.journal ? `<span>·</span><span class="truncate max-w-[34ch]">${escapeHtml(r.journal)}</span>` : ''}
+            ${r.doi ? `<span>·</span><a href="https://doi.org/${encodeURIComponent(r.doi)}" target="_blank" class="truncate max-w-[30ch]" onclick="event.stopPropagation()">doi:${escapeHtml(r.doi)}</a>` : ''}
           </div>
           <p class="text-xs text-ink-600 dark:text-ink-300 mt-2 leading-relaxed">${escapeHtml(snippet)}${(r.text || '').length > 360 ? '…' : ''}</p>
           <div class="flex flex-wrap items-center gap-2 mt-2.5">
@@ -198,7 +201,7 @@ function toast(msg) {
 
 function _paperShell(d, paperId, summaryHtml) {
   return `<html><head><title>${escapeHtml(d.title || paperId)}</title>
-    <style>body{font-family:Inter,sans-serif;max-width:780px;margin:30px auto;padding:0 20px;color:#1c2230;line-height:1.6}h1{font-size:20px}h2{font-size:15px;margin-top:22px}.meta{color:#8b94a6;font-size:13px}.toc{margin:14px 0;padding:14px;background:#f7f8fa;border-radius:8px;font-size:13px}.summary{font-size:15px}.muted{color:#8b94a6;font-style:italic}a{color:#4f8c5c}</style></head><body>
+    <style>body{font-family:Inter,sans-serif;max-width:780px;margin:30px auto;padding:0 20px;color:#171512;line-height:1.6}h1{font-size:20px}h2{font-size:15px;margin-top:22px}.meta{color:#9a9184;font-size:13px}.toc{margin:14px 0;padding:14px;background:#f4efe6;border-radius:8px;font-size:13px}.summary{font-size:15px}.muted{color:#9a9184;font-style:italic}a{color:#de4b2c}</style></head><body>
     <h1>${escapeHtml(d.title || paperId)}</h1>
     <div class="meta">${escapeHtml(d.authors || '')} ${d.year ? '· ' + d.year : ''}</div>
     ${d.pdf_available ? `<p><a href="/research/paper/${encodeURIComponent(paperId)}/view" target="_blank">Read & clip ↗</a></p>` : ''}
@@ -218,7 +221,7 @@ function openPaper(paperId) {
   // Open the window synchronously (inside the click) so popup blockers allow it,
   // then fill it once data — and if needed a freshly generated summary — arrives.
   const w = window.open('', '_blank');
-  if (w) w.document.write('<p style="font-family:Inter,sans-serif;color:#8b94a6;margin:40px">Loading…</p>');
+  if (w) w.document.write('<p style="font-family:Inter,sans-serif;color:var(--ink-faint);margin:40px">Loading…</p>');
   (async () => {
     try {
       const d = await (await fetch('/api/rag/paper?id=' + encodeURIComponent(paperId))).json();
@@ -227,7 +230,7 @@ function openPaper(paperId) {
         summaryHtml = _summaryToHtml(d.summary);
       } else {
         if (w) w.document.body.innerHTML =
-          '<p style="font-family:Inter,sans-serif;color:#8b94a6;margin:40px">Generating summary with the local model — this can take a moment…</p>';
+          '<p style="font-family:Inter,sans-serif;color:var(--ink-faint);margin:40px">Generating summary with the local model — this can take a moment…</p>';
         try {
           const sr = await fetch('/api/rag/paper/summarize?id=' + encodeURIComponent(paperId), { method: 'POST' });
           if (sr.ok) summaryHtml = _summaryToHtml((await sr.json()).summary || '');

@@ -160,6 +160,45 @@ CREATE INDEX IF NOT EXISTS idx_task_status       ON task(status);
 CREATE INDEX IF NOT EXISTS idx_task_due_date     ON task(due_date);
 CREATE INDEX IF NOT EXISTS idx_task_manuscript   ON task(manuscript_id);
 CREATE INDEX IF NOT EXISTS idx_task_experiment   ON task(experiment_id);
+
+-- ── Paper Review (dual-pane annotation workspace; ported from Parsecneuro) ────────
+-- One row per paper that has been opened in the Review reader. Holds a light
+-- bookkeeping record; the actual marks + notes live in the two child tables.
+CREATE TABLE IF NOT EXISTS paper_review (
+    paper_id     TEXT PRIMARY KEY,
+    title        TEXT,
+    opened_at    TEXT,
+    updated_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+
+-- In-PDF marks: highlight | note | ellipse | rectangle. Rects are an array of
+-- {x,y,width,height} normalised to [0,1] page coordinates so they survive zoom
+-- and page-size changes. Colored; each may carry a short note. The client owns
+-- the uuid `id` (stable across undo/redo snapshots) — that's why it's TEXT.
+CREATE TABLE IF NOT EXISTS review_mark (
+    id          TEXT PRIMARY KEY,
+    paper_id    TEXT NOT NULL,
+    type        TEXT NOT NULL,
+    page        INTEGER NOT NULL,
+    rects_json  TEXT NOT NULL DEFAULT '[]',
+    color       TEXT NOT NULL DEFAULT '#f4d75e',
+    note        TEXT NOT NULL DEFAULT '',
+    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    updated_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+CREATE INDEX IF NOT EXISTS idx_mark_paper ON review_mark(paper_id);
+
+-- Free-form, page-anchored review comments (the "notebook"). Each comment is
+-- tied to a left-pane page number so it stays anchored when re-reading.
+CREATE TABLE IF NOT EXISTS review_note (
+    id          TEXT PRIMARY KEY,
+    paper_id    TEXT NOT NULL,
+    page        INTEGER NOT NULL DEFAULT 1,
+    text        TEXT NOT NULL,
+    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    updated_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+CREATE INDEX IF NOT EXISTS idx_note_paper ON review_note(paper_id);
 """
 
 EXPERIMENT_STATUSES = ["planned", "in_progress", "done", "failed", "abandoned"]

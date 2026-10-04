@@ -9,24 +9,24 @@
 {% block content %}
 <style>
   .dropzone {
-    border: 2px dashed #c2ddc8;
+    border: 2px dashed var(--signal-wash);
     border-radius: 24px;
     background: linear-gradient(135deg, rgba(241, 247, 242,0.4) 0%, rgba(224, 238, 227,0.3) 100%);
     transition: all 0.2s ease;
     min-height: 280px;
   }
   .dropzone.hover {
-    border-color: #4f8c5c;
-    background: linear-gradient(135deg, rgba(241, 247, 242,0.8) 0%, rgba(194, 221, 200,0.5) 100%);
+    border-color: var(--signal);
+    background: linear-gradient(135deg, rgba(238,241,255,0.8) 0%, rgba(199,208,255,0.5) 100%);
     transform: scale(1.01);
   }
   .dark .dropzone {
-    border-color: #2b4d32;
-    background: linear-gradient(135deg, rgba(20, 38, 26,0.4) 0%, rgba(35, 64, 42,0.3) 100%);
+    border-color: var(--signal-ink);
+    background: linear-gradient(135deg, rgba(29,32,80,0.4) 0%, rgba(46,53,115,0.3) 100%);
   }
   .dark .dropzone.hover {
-    border-color: #72a97e;
-    background: linear-gradient(135deg, rgba(35, 64, 42,0.6) 0%, rgba(63, 116, 73,0.4) 100%);
+    border-color: var(--signal);
+    background: linear-gradient(135deg, rgba(46,53,115,0.6) 0%, rgba(78,88,216,0.4) 100%);
   }
   .file-row { transition: all 0.2s ease; }
 </style>

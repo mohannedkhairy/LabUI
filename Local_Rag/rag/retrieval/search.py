@@ -148,7 +148,7 @@ def _fetch_chunks(conn: sqlite3.Connection, chunk_ids: list[str]) -> list[dict]:
     rows = conn.execute(
         f"""
         SELECT c.chunk_id, c.paper_id, c.section_name, c.page_start, c.page_end, c.text,
-               p.title, p.authors, p.year, p.doi
+               p.title, p.authors, p.year, p.doi, p.journal, p.url, p.abstract
         FROM chunks c
         JOIN papers p ON p.paper_id = c.paper_id
         WHERE c.chunk_id IN ({placeholders})

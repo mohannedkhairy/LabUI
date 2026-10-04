@@ -22,6 +22,8 @@ Local_Rag/rag/data/*
 !Local_Rag/rag/data/.gitkeep
 Local_Rag/rag/notes/*
 !Local_Rag/rag/notes/.gitkeep
+Local_Rag/rag/manuscripts/*
+!Local_Rag/rag/manuscripts/.gitkeep
 Local_Rag/rag/logs/*
 !Local_Rag/rag/logs/.gitkeep
 

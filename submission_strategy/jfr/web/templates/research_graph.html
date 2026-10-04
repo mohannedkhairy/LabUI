@@ -21,27 +21,27 @@
   .graph-svg:active { cursor: grabbing; }
   .graph-node circle { stroke: #ffffff; stroke-width: 1.2; transition: stroke-width 0.15s; }
   .dark .graph-node circle { stroke: #0a0d14; }
-  .graph-node.selected circle { stroke-width: 3; stroke: #4f8c5c; }
+  .graph-node.selected circle { stroke-width: 3; stroke: var(--signal); }
   .graph-node.dim circle, .graph-node.dim text { opacity: 0.15; }
   .graph-link { stroke-linecap: round; }
   .graph-label {
     font: 600 10px Inter, system-ui, sans-serif;
-    fill: #2a3142; pointer-events: none;
+    fill: var(--sunken); pointer-events: none;
     text-shadow: 0 1px 0 rgba(255,255,255,0.85), 0 0 4px rgba(255,255,255,0.85);
   }
-  .dark .graph-label { fill: #eef0f4; text-shadow: 0 1px 0 #0a0d14, 0 0 4px #0a0d14; }
+  .dark .graph-label { fill: var(--sunken); text-shadow: 0 1px 0 #0a0d14, 0 0 4px #0a0d14; }
   .type-chip { font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: 600; }
   .legend-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; }
 
   .ctrl-btn {
     width: 30px; height: 30px; border-radius: 8px;
     display: flex; align-items: center; justify-content: center;
-    background: rgba(255,255,255,0.92); color: #3e4759; backdrop-filter: blur(6px);
+    background: rgba(255,255,255,0.92); color: var(--ink-muted); backdrop-filter: blur(6px);
     box-shadow: 0 1px 3px rgba(0,0,0,0.12); cursor: pointer; transition: all 0.15s;
   }
-  .ctrl-btn:hover { background: #f1f7f2; color: #3f7449; }
-  .dark .ctrl-btn { background: rgba(28,34,48,0.92); color: #bfc6d2; }
-  .dark .ctrl-btn:hover { background: #14261a; color: #9bc5a5; }
+  .ctrl-btn:hover { background: var(--signal-wash); color: var(--signal-ink); }
+  .dark .ctrl-btn { background: rgba(28,34,48,0.92); color: var(--ink-muted); }
+  .dark .ctrl-btn:hover { background: var(--signal-wash); color: var(--signal); }
 </style>
 
 <!-- Stats strip -->

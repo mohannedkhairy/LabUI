@@ -98,9 +98,9 @@
         </div>
       </div>
       <div class="border-t border-ink-200 dark:border-ink-800 px-5 py-2.5 flex items-center gap-2">
-        <button onclick="saveNote()" class="bg-brand-600 hover:bg-brand-700 text-white text-xs font-medium px-4 py-1.5 rounded-md">Save</button>
+        <button id="save-btn" onclick="saveNote()" class="bg-brand-600 hover:bg-brand-700 text-white text-xs font-medium px-4 py-1.5 rounded-md">Save</button>
         <button onclick="cancelEdit()" class="text-ink-500 dark:text-ink-300 text-xs px-3 py-1.5">Cancel</button>
-        <span class="ml-auto text-[10px] text-ink-400">Saving an edit creates a fresh copy in <span class="font-mono">notes/</span> and keeps its folder.</span>
+        <span class="ml-auto text-[10px] text-ink-400">Editing an existing note saves it in place and keeps its folder. A new file in <span class="font-mono">notes/</span> is only created for a brand-new note.</span>
       </div>
     </div>
     <div id="reader-empty" class="flex-1 flex flex-col items-center justify-center text-ink-400 dark:text-ink-500 text-sm p-8">
@@ -360,6 +360,11 @@ function showReader(title, content) {
   document.getElementById('reader-content').innerHTML = html;
 }
 
+function setSaveMode(isNew) {
+  const btn = document.getElementById('save-btn');
+  if (btn) btn.textContent = isNew ? 'Create note' : 'Save';
+}
+
 function toggleEdit() {
   const editingNow = document.getElementById('reader-edit-wrap').style.display !== 'none';
   if (editingNow) { showReader(document.getElementById('reader-title').textContent, parseFrontmatter(currentRawContent).body); return; }
@@ -369,6 +374,7 @@ function toggleEdit() {
   document.getElementById('edit-title').value = title || currentNoteId || '';
   document.getElementById('edit-content').value = body;
   document.getElementById('reader-edit').textContent = 'Preview';
+  setSaveMode(!currentNoteId);
   if (window.attachMentions) attachMentions(document.getElementById('edit-content'));
 }
 
@@ -378,13 +384,27 @@ async function saveNote() {
   const title = document.getElementById('edit-title').value.trim() || 'Untitled';
   const content = document.getElementById('edit-content').value;
   try {
-    const r = await fetch('/api/rag/notes', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title, content, agent: '', folder: currentNoteFolder || null }),
-    });
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    const d = await r.json();
-    toast('Saved as ' + d.id);
+    let d;
+    if (currentNoteId) {
+      // Editing an existing note → update it IN PLACE (same id, no new file).
+      const r = await fetch('/api/rag/notes/' + encodeURIComponent(currentNoteId), {
+        method: 'PUT', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({title, content})
+      });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      d = await r.json();
+      toast('Saved ' + d.id);
+    } else {
+      // Brand-new note → create it.
+      const r = await fetch('/api/rag/notes', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({title, content, agent: '', folder: currentNoteFolder || null})
+      });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      d = await r.json();
+      currentNoteId = d.id;
+      toast('Created ' + d.id);
+    }
     await loadAll();
     openNote(d.id);
   } catch (e) {
@@ -406,6 +426,7 @@ function newNote(folderId) {
   document.getElementById('edit-title').value = '';
   document.getElementById('edit-content').value = '';
   document.getElementById('reader-edit').textContent = 'Preview';
+  setSaveMode(true);
   if (window.attachMentions) attachMentions(document.getElementById('edit-content'));
   document.getElementById('edit-title').focus();
   renderSidebar();

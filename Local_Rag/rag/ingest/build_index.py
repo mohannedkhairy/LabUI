@@ -50,6 +50,13 @@ CREATE TABLE IF NOT EXISTS papers (
     year      INTEGER,
     source_pdf TEXT,
     doi       TEXT,            -- filled by optional metadata enrichment; NULL otherwise
+    journal   TEXT,
+    volume    TEXT,
+    issue     TEXT,
+    pages     TEXT,
+    publisher TEXT,
+    url       TEXT,
+    abstract  TEXT,
     title_original TEXT        -- original PDF title before any cleanup; NULL otherwise
 );
 
@@ -92,7 +99,7 @@ def _init_db(conn: sqlite3.Connection) -> None:
     # SELECT p.doi). Older indexes built before these columns existed get them
     # here so a re-index isn't required.
     have = {row[1] for row in conn.execute("PRAGMA table_info(papers)").fetchall()}
-    for col in ("doi", "title_original"):
+    for col in ("doi", "journal", "volume", "issue", "pages", "publisher", "url", "abstract", "title_original"):
         if col not in have:
             conn.execute(f"ALTER TABLE papers ADD COLUMN {col} TEXT")
     conn.commit()
@@ -125,14 +132,24 @@ def _insert_paper(conn: sqlite3.Connection, parsed: dict) -> None:
     if isinstance(authors, list):
         authors = "; ".join(authors)
     conn.execute(
-        "INSERT OR REPLACE INTO papers (paper_id, title, authors, year, source_pdf) "
-        "VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO papers (paper_id, title, authors, year, source_pdf, doi, journal, volume, issue, pages, publisher, url, abstract) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+        "ON CONFLICT(paper_id) DO UPDATE SET "
+        # Once a metadata pass has recorded title_original, keep the cleaned
+        # title on subsequent re-indexes instead of restoring a filename/header
+        # variant from the cached parsed JSON.
+        "title=CASE WHEN papers.title_original IS NOT NULL AND papers.title_original<>'' THEN papers.title ELSE excluded.title END, authors=CASE WHEN excluded.authors<>'' THEN excluded.authors ELSE papers.authors END, "
+        "year=COALESCE(excluded.year,papers.year), source_pdf=excluded.source_pdf, "
+        "doi=COALESCE(NULLIF(excluded.doi,''),papers.doi), journal=COALESCE(NULLIF(excluded.journal,''),papers.journal), "
+        "volume=COALESCE(NULLIF(excluded.volume,''),papers.volume), issue=COALESCE(NULLIF(excluded.issue,''),papers.issue), pages=COALESCE(NULLIF(excluded.pages,''),papers.pages), publisher=COALESCE(NULLIF(excluded.publisher,''),papers.publisher), "
+        "url=COALESCE(NULLIF(excluded.url,''),papers.url), abstract=COALESCE(NULLIF(excluded.abstract,''),papers.abstract)",
         (
-            parsed["paper_id"],
-            parsed.get("title", ""),
-            authors,
-            parsed.get("year"),
-            parsed.get("source_pdf", ""),
+            parsed["paper_id"], parsed.get("title", ""), authors,
+            parsed.get("year"), parsed.get("source_pdf", ""),
+            parsed.get("doi") or "", parsed.get("journal") or "",
+            parsed.get("volume") or "", parsed.get("issue") or "",
+            parsed.get("pages") or "", parsed.get("publisher") or "",
+            parsed.get("url") or "", parsed.get("abstract") or "",
         ),
     )
 
@@ -203,10 +220,13 @@ def run(limit: int | None = None) -> None:
             continue
         seen_hashes[chash] = paper_id
 
-        if not _paper_exists(conn, paper_id):
-            _insert_paper(conn, parsed)
-            conn.commit()
-            
+        is_new_paper = not _paper_exists(conn, paper_id)
+        # Upsert metadata even for an already-indexed paper. This is what makes
+        # a newly configured Mendeley library repair the cards on the next
+        # indexing pass without rebuilding vectors.
+        _insert_paper(conn, parsed)
+        conn.commit()
+        if is_new_paper:
             title = parsed.get("title", paper_id)
             pid_entity = upsert_entity(graph_conn, name=title, entity_type="Paper", description=f"Paper ID: {paper_id}", paper_id=paper_id)
             refs_raw = parsed.get("references_raw", "")
@@ -247,6 +267,11 @@ def run(limit: int | None = None) -> None:
              total_papers, total_chunks, skipped_dupes)
     conn.close()
     graph_conn.close()
+    try:
+        from citations import sync_rag_papers
+        sync_rag_papers(force=True)
+    except Exception as exc:
+        log.warning("Citation catalog sync skipped: %s", exc)
 
 
 if __name__ == "__main__":

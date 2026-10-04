@@ -35,6 +35,11 @@
               class="bg-ink-50 dark:bg-ink-800 border border-ink-200 dark:border-ink-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400">
         <option value="">No manuscript context</option>
       </select>
+      <select id="section-select" style="display:none"
+              title="Which manuscript section — loads that section's measured targets from the writing standard"
+              class="bg-ink-50 dark:bg-ink-800 border border-ink-200 dark:border-ink-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400">
+        <option value="">Any section</option>
+      </select>
       <div class="flex-1"></div>
       <select id="topk-select" title="How many passages + web results to retrieve"
               class="bg-ink-50 dark:bg-ink-800 border border-ink-200 dark:border-ink-700 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-brand-400">
@@ -166,10 +171,38 @@ async function loadAgents() {
       if (id === 'chat') o.selected = true;
       sel.appendChild(o);
     }
-    sel.onchange = () => { currentAgent = sel.value; };
+    sel.onchange = () => { currentAgent = sel.value; syncSectionSelect(agents); };
+    await loadSections();
+    syncSectionSelect(agents);
   } catch (e) {
     document.getElementById('agent-select').innerHTML = '<option>chat</option>';
   }
+}
+
+// ── Writing standard (skill packs) ────────────────────────────
+// Skill-backed agents take a `section`, which decides the slice of the standard
+// the server loads. Only shown when such an agent is selected.
+let SKILL_SECTIONS = [];
+
+async function loadSections() {
+  try {
+    const r = await fetch('/api/rag/skills');
+    if (!r.ok) return;
+    const d = await r.json();
+    if (!d.default) return;                       // nothing installed
+    SKILL_SECTIONS = d.sections || [];
+    document.getElementById('section-select').innerHTML =
+      '<option value="">Any section</option>' +
+      SKILL_SECTIONS.map(s => `<option value="${s.id}">${s.label}</option>`).join('');
+  } catch (e) { /* leave hidden */ }
+}
+
+function syncSectionSelect(agents) {
+  const sel = document.getElementById('section-select');
+  if (!sel) return;
+  const skillBacked = SKILL_SECTIONS.length &&
+    agents && agents[currentAgent] && agents[currentAgent].skill;
+  sel.style.display = skillBacked ? '' : 'none';
 }
 
 // ── Manuscripts ───────────────────────────────────────────────
@@ -348,6 +381,7 @@ async function sendQuery() {
     session_id: currentSessionId,
     top_k: parseInt((document.getElementById('topk-select') || {}).value, 10) || 10,
     gen_model: (typeof getActiveModel === 'function' ? getActiveModel() : null) || undefined,
+    section: (document.getElementById('section-select') || {}).value || undefined,
   };
 
   let collected = '';
@@ -534,7 +568,9 @@ function renderSources(papers) {
         <span class="text-[10px] font-mono bg-brand-100 dark:bg-brand-900 text-brand-700 dark:text-brand-300 px-1.5 py-0.5 rounded">${p.n ?? (i+1)}</span>
         <span class="font-medium text-xs leading-snug flex-1">${escapeHtml((p.title || p.paper_id).slice(0, 80))}</span>
       </div>
-      ${p.doi ? `<a href="https://doi.org/${escapeHtml(p.doi)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" class="text-[10px] text-brand-600 dark:text-brand-300 hover:underline ml-7 font-mono truncate block">doi:${escapeHtml(p.doi)}</a>` : `<div class="text-[10px] text-ink-400 ml-7 font-mono truncate">${escapeHtml(p.paper_id)}</div>`}
+      <div class="text-[10px] text-ink-400 ml-7 font-mono truncate">@${escapeHtml(p.citation_key || p.paper_id)}</div>
+      <div class="text-[10px] text-ink-500 ml-7 mt-0.5 truncate">${escapeHtml(p.authors || '')}${p.year ? ' · ' + escapeHtml(p.year) : ''}${p.journal ? ' · ' + escapeHtml(p.journal) : ''}${p.volume ? ' · vol. ' + escapeHtml(p.volume) : ''}${p.pages ? ' · pp. ' + escapeHtml(p.pages) : ''}</div>
+      ${p.doi ? `<a href="https://doi.org/${escapeHtml(p.doi)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" class="text-[10px] text-brand-600 dark:text-brand-300 hover:underline ml-7 font-mono truncate block">doi:${escapeHtml(p.doi)}</a>` : ''}
       <div class="text-[10px] text-ink-500 ml-7 mt-0.5">${escapeHtml(p.section_name || '')} · p. ${p.page_start || '—'}${p.page_end && p.page_end !== p.page_start ? '–' + p.page_end : ''}</div>
       <div class="ml-7 mt-1.5 flex items-center gap-1.5">
         <button onclick="linkSource('${escapeJs(p.paper_id)}')"
@@ -615,10 +651,10 @@ async function openPaper(paperId) {
     w.document.open();
     w.document.write(`
       <html><head><title>${escapeHtml(d.title || paperId)}</title>
-      <style>body{font-family:Inter,sans-serif;max-width:780px;margin:30px auto;padding:0 20px;color:#1c2230;line-height:1.6}
-      h1{font-size:20px} h2{font-size:14px;color:#5a6478;font-weight:600} .meta{color:#8b94a6;font-size:13px}
-      .toc{margin:14px 0;padding:14px;background:#f7f8fa;border-radius:8px;font-size:13px}
-      a{color:#4f8c5c}</style></head><body>
+      <style>body{font-family:Inter,sans-serif;max-width:780px;margin:30px auto;padding:0 20px;color:#171512;line-height:1.6}
+      h1{font-size:20px} h2{font-size:14px;color:#6e675d;font-weight:600} .meta{color:#9a9184;font-size:13px}
+      .toc{margin:14px 0;padding:14px;background:#f4efe6;border-radius:8px;font-size:13px}
+      a{color:#de4b2c}</style></head><body>
       <h1>${escapeHtml(d.title || paperId)}</h1>
       <div class="meta">${escapeHtml(d.authors || '')} ${d.year ? '· ' + d.year : ''}</div>
       ${d.pdf_available ? `<p><a href="/research/paper/${encodeURIComponent(paperId)}/view" target="_blank">Read & clip ↗</a></p>` : ''}

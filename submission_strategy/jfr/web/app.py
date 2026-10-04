@@ -85,6 +85,20 @@ try:
 except Exception as e:
     print(f"[rag] router import failed: {e}")
 
+# Mount writing-projects router under /api/rag/* (projects, files, citations, export)
+try:
+    from jfr.web.writing_routes import router as _writing_router
+    app.include_router(_writing_router, prefix="/api/rag", tags=["writing"])
+except Exception as e:
+    print(f"[writing] router import failed: {e}")
+
+# Mount paper-review router under /api/rag/* (dual-pane marks/notes/snapshot/export)
+try:
+    from jfr.web.review_routes import router as _review_router
+    app.include_router(_review_router, prefix="/api/rag", tags=["review"])
+except Exception as e:
+    print(f"[review] router import failed: {e}")
+
 _settings = get_settings()
 _templates_dir = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(_templates_dir))
@@ -946,9 +960,29 @@ def research_style_page(request: Request):
     return templates.TemplateResponse(request, "research_style.html", {})
 
 
+@app.get("/research/phrasebank", response_class=HTMLResponse)
+def research_phrasebank(request: Request):
+    """Browsable phrase bank — the installed skill pack's rhetorical moves,
+    patterns, and attested exemplars. Served from the pack itself; see
+    Local_Rag/rag/skills/build_phrasebank_html.py."""
+    return templates.TemplateResponse(request, "research_phrasebank.html", {})
+
+
 @app.get("/research/graph", response_class=HTMLResponse)
 def research_graph_page(request: Request):
     return templates.TemplateResponse(request, "research_graph.html", {})
+
+
+@app.get("/write", response_class=HTMLResponse)
+def writing_projects_page(request: Request):
+    return templates.TemplateResponse(request, "writing_projects.html", {})
+
+
+@app.get("/write/{project_id}", response_class=HTMLResponse)
+def writing_workspace_page(request: Request, project_id: str):
+    return templates.TemplateResponse(request, "writing_workspace.html", {
+        "project_id": project_id,
+    })
 
 
 @app.get("/research/upload", response_class=HTMLResponse)
