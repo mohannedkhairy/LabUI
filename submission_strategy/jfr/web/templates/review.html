@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Paper review{% endblock %}
 {% block heading %}Paper review{% endblock %}
-{% block subtitle %}Dual-pane reader — annotate the main text, cross-check the figures, keep a page-anchored notebook{% endblock %}
+{% block subtitle %}Scroll through the same paper in two panes — annotate the text, cross-check figures, and keep page-linked notes{% endblock %}
 
 {% block head %}
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/web/pdf_viewer.css">
@@ -21,6 +21,8 @@
     .pane-viewer { flex: 1; overflow: auto; background: var(--ink-100, #f3f4f6); padding: .75rem; text-align: center; }
     .page-wrap { position: relative; display: inline-block; line-height: 0; margin: 0 auto; box-shadow: 0 4px 18px -6px rgba(0,0,0,.25); }
     .page-wrap canvas { display: block; }
+    .continuous-page { display:block; margin:0 auto 16px; background:white; }
+    .pane-viewer { position:relative; overflow-anchor:none; }
     .page-wrap svg.mark-layer { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
     .mark-rect { cursor: pointer; }
     .mark-rect.highlight { fill: rgba(244,215,94,.42); }
