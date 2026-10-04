@@ -122,12 +122,11 @@
 {% block scripts %}
 <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
 <style>
-  .appearance-btn { background: transparent; color: #5a6478; border: 1px solid #dde1e8; }
-  .dark .appearance-btn { color: #bfc6d2; border-color: #2a3142; }
-  .appearance-btn:hover { background: rgb(var(--brand-50)); }
-  .dark .appearance-btn:hover { background: rgb(var(--brand-950)); }
-  .appearance-btn.active { background: rgb(var(--brand-50)); color: rgb(var(--brand-700)); border-color: rgb(var(--brand-300)); font-weight: 600; }
-  .dark .appearance-btn.active { background: rgb(var(--brand-950)); color: rgb(var(--brand-300)); border-color: rgb(var(--brand-800)); }
+  .appearance-btn { background: transparent; color: var(--ink-muted); border: 1px solid var(--line); }
+  .appearance-btn:hover { background: rgb(var(--c-brand-50)); }
+  .dark .appearance-btn:hover { background: rgb(var(--c-brand-950)); }
+  .appearance-btn.active { background: rgb(var(--c-brand-50)); color: rgb(var(--c-brand-700)); border-color: rgb(var(--c-brand-300)); font-weight: 600; }
+  .dark .appearance-btn.active { background: rgb(var(--c-brand-950)); color: rgb(var(--c-brand-300)); border-color: rgb(var(--c-brand-800)); }
   .width-focused { max-width: 42rem; }
   .width-comfort { max-width: 56rem; }
   .width-wide    { max-width: 100%;  }
@@ -135,15 +134,15 @@
   /* Folder tree — hover/selected rows are frosted glass, matching the search
      bar above (the grain from .glass-panel stays faintly visible through them). */
   .folder-row { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 10px; cursor: pointer; font-size: 13px; }
-  .folder-row:hover { background: rgb(var(--brand-50) / 0.55); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+  .folder-row:hover { background: rgb(var(--c-brand-50) / 0.55); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
   .dark .folder-row:hover { background: rgb(0 0 0 / 0.18); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
   .folder-row .folder-actions { opacity: 0; transition: opacity 0.15s ease; }
   .folder-row:hover .folder-actions { opacity: 1; }
   .note-row { display: block; width: 100%; text-align: left; padding: 8px 10px; border-radius: 10px; font-size: 13px; transition: all 0.15s ease; }
-  .note-row:hover { background: rgb(var(--brand-50) / 0.55); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+  .note-row:hover { background: rgb(var(--c-brand-50) / 0.55); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
   .dark .note-row:hover { background: rgb(0 0 0 / 0.18); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
-  .note-row.active { background: rgb(var(--brand-50) / 0.75); backdrop-filter: blur(10px) saturate(160%); -webkit-backdrop-filter: blur(10px) saturate(160%); border: 1px solid rgb(var(--brand-200) / 0.7); }
-  .dark .note-row.active { background: rgb(var(--brand-950) / 0.6); backdrop-filter: blur(10px) saturate(160%); -webkit-backdrop-filter: blur(10px) saturate(160%); border-color: rgb(var(--brand-800) / 0.7); }
+  .note-row.active { background: rgb(var(--c-brand-50) / 0.75); backdrop-filter: blur(10px) saturate(160%); -webkit-backdrop-filter: blur(10px) saturate(160%); border: 1px solid rgb(var(--c-brand-200) / 0.7); }
+  .dark .note-row.active { background: rgb(var(--c-brand-950) / 0.6); backdrop-filter: blur(10px) saturate(160%); -webkit-backdrop-filter: blur(10px) saturate(160%); border-color: rgb(var(--c-brand-800) / 0.7); }
 </style>
 <script>
 let currentNoteId = null;

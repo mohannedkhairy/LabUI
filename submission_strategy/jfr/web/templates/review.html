@@ -348,7 +348,7 @@ function renderNotes(){
    notes.forEach(n => { (byPage[n.page] = byPage[n.page]||[]).push(n); });
    box.innerHTML = Object.keys(byPage).sort((a,b)=>(+a)-(+b)).map(pg =>
    `<div style="margin-bottom:.5rem">
-     <div style="font-size:11px;color:var(--ink-400);margin-bottom:.25rem">Page ${pg} <button class="toolbar-btn" style="padding:.05rem .35rem;font-size:11px" onclick="jumpTo(${pg})">↗</button></div>
+     <div style="font-size:11px;color:rgb(var(--c-ink-400));margin-bottom:.25rem">Page ${pg} <button class="toolbar-btn" style="padding:.05rem .35rem;font-size:11px" onclick="jumpTo(${pg})">↗</button></div>
      ${byPage[pg].map(n => `
        <div class="note-card" onclick="jumpTo(${n.page})">
          <div class="pg">${esc(n.id).slice(0,8)} · p${n.page}</div>
@@ -363,11 +363,11 @@ function renderMeta(){
    b.className = '';
    b.innerHTML = `
      <div style="font-size:14px;font-weight:600;line-height:1.2">${esc(m.title||PID)}</div>
-     <div style="font-size:12px;color:var(--ink-500);margin-top:.25rem">${esc((m.authors||'').replace(/[;,|]/g,','))}</div>
-     <div style="font-size:11px;color:var(--ink-400);margin-top:.4rem">${m.year||''} ${m.journal?' · '+esc(m.journal):''} ${m.doi?' · '+esc(m.doi):''}</div>
-     ${m.citation_key ? `<div style="font-size:11px;color:var(--ink-400);margin-top:.3rem">@${esc(m.citation_key)}</div>` : ''}
+     <div style="font-size:12px;color:rgb(var(--c-ink-500));margin-top:.25rem">${esc((m.authors||'').replace(/[;,|]/g,','))}</div>
+     <div style="font-size:11px;color:rgb(var(--c-ink-400));margin-top:.4rem">${m.year||''} ${m.journal?' · '+esc(m.journal):''} ${m.doi?' · '+esc(m.doi):''}</div>
+     ${m.citation_key ? `<div style="font-size:11px;color:rgb(var(--c-ink-400));margin-top:.3rem">@${esc(m.citation_key)}</div>` : ''}
      ${m.abstract ? `<div style="font-size:12px;line-height:1.4;margin-top:.6rem;white-space:pre-wrap">${esc(m.abstract).slice(0,1500)}</div>` : ''}
-     ${m.summary ? `<div style="font-size:12px;line-height:1.4;margin-top:.6rem;padding:.5rem;border-left:3px solid var(--ink-300);white-space:pre-wrap">${esc(m.summary).slice(0,1200)}</div>` : ''}
+     ${m.summary ? `<div style="font-size:12px;line-height:1.4;margin-top:.6rem;padding:.5rem;border-left:3px solid rgb(var(--c-ink-300));white-space:pre-wrap">${esc(m.summary).slice(0,1200)}</div>` : ''}
    `;
 }
 
