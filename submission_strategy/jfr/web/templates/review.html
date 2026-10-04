@@ -1,0 +1,549 @@
+{% extends "base.html" %}
+{% block title %}Paper review{% endblock %}
+{% block heading %}Paper review{% endblock %}
+{% block subtitle %}Dual-pane reader — annotate the main text, cross-check the figures, keep a page-anchored notebook{% endblock %}
+
+{% block head %}
+<style>
+    .review-grid { display: grid; grid-template-columns: 1fr 1fr minmax(300px, 360px); height: calc(100vh - 11rem); gap: .5rem; }
+    .pane { display: flex; flex-direction: column; min-width: 0; }
+    .pane-head { display: flex; align-items: center; gap: .4rem; padding: .35rem .5rem; border-bottom: 1px solid var(--ink-200, #e5e7eb);
+               flex-wrap: wrap; font-size: 12px; }
+    .pane-title { font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-muted, #6b7280); margin-right: auto; }
+    .pane-viewer { flex: 1; overflow: auto; background: var(--ink-100, #f3f4f6); padding: .75rem; text-align: center; }
+    .page-wrap { position: relative; display: inline-block; line-height: 0; margin: 0 auto; box-shadow: 0 4px 18px -6px rgba(0,0,0,.25); }
+    .page-wrap canvas { display: block; }
+    .page-wrap svg.mark-layer { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+    .mark-rect { cursor: pointer; }
+    .mark-rect.highlight { fill: rgba(244,215,94,.42); }
+    .mark-rect.note { fill: rgba(14,124,110,.20); }
+    .toolbar-btn { padding: .25rem .5rem; border-radius: 6px; background: var(--ink-100, #f3f4f6); border: none; cursor: pointer; font-size: 12px; }
+    .toolbar-btn:hover { filter: brightness(.96); }
+    .toolbar-btn.active { background: var(--ink-800, #1f2937); color: #fff; }
+    .swatch { width: 18px; height: 18px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px var(--ink-300,#9ca3af); cursor: pointer; display: inline-block; }
+    .swatch.active { outline: 2px solid var(--ink-800,#1f2937); outline-offset: 1px; }
+    .note-card { border: 1px solid var(--ink-200,#e5e7eb); border-radius: 8px; padding: .5rem; margin-bottom: .5rem; cursor: pointer; }
+    .note-card:hover { border-color: var(--ink-400,#9ca3af); }
+    .note-card .pg { font-size: 10px; font-family: ui-monospace,monospace; color: var(--ink-400,#9ca3af); }
+    .note-card .txt { font-size: 13px; margin-top: 2px; white-space: pre-wrap; word-break: break-word; }
+    .mark-card { border: 1px solid var(--ink-200,#e5e7eb); border-radius: 8px; padding: .4rem .55rem; margin-bottom: .4rem; display: flex; gap: .5rem; align-items: flex-start; }
+    .mark-card .sw { width: 12px; height: 12px; border-radius: 3px; margin-top: 3px; flex: 0 0 auto; }
+    .mark-card .meta { font-size: 11px; color: var(--ink-500,#6b7280); }
+    .mark-card .note { font-size: 12px; }
+    .tab-bar { display: flex; gap: .25rem; border-bottom: 1px solid var(--ink-200,#e5e7eb); padding: .35rem .5rem 0; }
+    .tab-bar button { padding: .35rem .75rem; border: none; background: transparent; cursor: pointer; font-size: 12px; color: var(--ink-500,#6b7280); border-bottom: 2px solid transparent; }
+    .tab-bar button.active { color: var(--ink,#111827); border-bottom: 2px solid var(--ink-800,#1f2937); font-weight: 600; }
+    .tab-panel { display: none; flex: 1; overflow-y: auto; padding: .5rem; }
+    .tab-panel.active { display: block; }
+    .empty { color: var(--ink-400,#9ca3af); font-size: 12px; text-align: center; padding: 1.5rem .5rem; }
+    #loadMsg { text-align: center; color: var(--ink-400,#9ca3af); font-size: 13px; padding: 2rem; }
+    textarea.ni { width: 100%; box-sizing: border-box; border: 1px solid var(--ink-200,#e5e7eb); border-radius: 6px; padding: .4rem; font: inherit; font-size: 13px; resize: vertical; min-height: 52px; }
+    .toast { position: fixed; bottom: 1rem; right: 1rem; background: var(--ink-800,#1f2937); color: #fff; padding: .5rem .9rem; border-radius: 8px; font-size: 13px; z-index: 60; opacity: 0; transition: opacity .2s; }
+    .toast.show { opacity: 1; }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Top toolbar -->
+<div style="display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; padding:.25rem 0 .6rem;">
+    <span style="font-size:12px; color:var(--ink-muted,#6b7280)">Paper</span>
+    <input id="paperInput" style="font:inherit;font-size:13px;border:1px solid var(--ink-200,#e5e7eb);border-radius:6px;padding:.3rem .5rem;width:220px" placeholder="paper id (from library)">
+    {% if paper_id %}<input type="hidden" id="paperIdSeed" value="{{ paper_id | tojson }}">{% endif %}\
+    <button class="toolbar-btn active" id="loadBtn">Open</button>
+    <span style="color:var(--ink-300,#d1d5db)">|</span>
+    <button class="toolbar-btn" id="browseBtn">Browse reviewed</button>
+    <span style="color:var(--ink-300,#d1d5db)">|</span>
+    <button class="toolbar-btn" id="undoBtn" title="Undo (⌘/Ctrl+Z)">↶ Undo</button>
+    <button class="toolbar-btn" id="redoBtn" title="Redo (⌘/Ctrl+Shift+Z)">↷ Redo</button>
+    <button class="toolbar-btn" id="exportBtn">⬇ Export notes</button>
+    <button class="toolbar-btn" id="saveBtn" title="Force-save current state">💾 Save</button>
+    <span id="statusPill" style="font-size:11px;color:var(--ink-500,#6b7280);margin-left:auto"></span>
+</div>
+
+<div class="review-grid">
+    <!-- LEFT: main text -->
+    <div class="pane">
+      <div class="pane-head">
+        <span class="pane-title">Main text</span>
+        <button class="toolbar-btn" onclick="pane('L').turn(-1)">‹</button>
+        <span id="lpNum" style="min-width:3.5em;text-align:center">1</span>
+        <button class="toolbar-btn" onclick="pane('L').turn(1)">›</button>
+        <span style="color:var(--ink-300,#d1d5db)">|</span>
+        <button class="toolbar-btn" onclick="pane('L').zoom(-0.15)">−</button>
+        <span id="lpZoom" style="min-width:3em;text-align:center">100%</span>
+        <button class="toolbar-btn" onclick="pane('L').zoom(0.15)">+</button>
+        <button class="toolbar-btn" onclick="pane('L').syncTo('R')" title="Copy L page to R">⇄ Sync R→L page</button>
+      </div>
+      <div id="Lviewer" class="pane-viewer">
+        <div class="page-wrap" id="Lwrap">
+          <canvas id="Lcanvas"></canvas>
+          <div class="textLayer" id="Ltext"></div>
+          <svg id="Lover" class="mark-layer"></svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: figures / cross-check -->
+    <div class="pane">
+      <div class="pane-head">
+        <span class="pane-title">Figures & cross-checks</span>
+        <button class="toolbar-btn" onclick="pane('R').turn(-1)">‹</button>
+        <span id="rpNum" style="min-width:3.5em;text-align:center">1</span>
+        <button class="toolbar-btn" onclick="pane('R').turn(1)">›</button>
+        <span style="color:var(--ink-300,#d1d5db)">|</span>
+        <button class="toolbar-btn" onclick="pane('R').zoom(-0.15)">−</button>
+        <span id="rpZoom" style="min-width:3em;text-align:center">100%</span>
+        <button class="toolbar-btn" onclick="pane('R').zoom(0.15)">+</button>
+        <button class="toolbar-btn" id="matchBtn" onclick="matchPage()" title="Snap R to L's page">◉ Match L</button>
+      </div>
+      <div id="Rviewer" class="pane-viewer">
+        <div class="page-wrap" idRwrap">
+          <canvas id="Rcanvas"></canvas>
+          <svg id="Rover" class="mark-layer"></svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- SIDEBAR: notebook + marks + draw toolbar -->
+    <div class="pane">
+      <div class="pane-head">
+        <span class="pane-title">Tools</span>
+        <span style="font-size:11px;color:var(--ink-400,#9ca3af)">drag on either page</span>
+      </div>
+      <div class="pane-head">
+        <button class="toolbar-btn active" data-tool="rectangle" onclick="setTool('rectangle')">▭ Rectangle</button>
+        <button class="toolbar-btn" data-tool="ellipse" onclick="setTool('ellipse')">◯ Ellipse</button>
+        <button class="toolbar-btn" data-tool="highlight" onclick="setTool('highlight')">▟ Highlight</button>
+        <span style="color:var(--ink-300,#d1d5db);margin:0 .25rem">|</span>
+        <span id="swatches">
+          <span class="swatch active" data-color="#f4d75e" style="background:#f4d75e" title="yellow"></span>
+          <span class="swatch" data-color="#ff6b6b" style="background:#ff6b6b" title="red"></span>
+          <span class="swatch" data-color="#4dabf7" style="background:#4dabf7" title="blue"></span>
+          <span class="swatch" data-color="#51cf66" style="background:#51cf66" title="green"></span>
+        </span>
+        <button class="toolbar-btn" id="eraseBtn" onclick="eraseActive()" style="color:#ef4444" title="Delete selected mark">⌫ Erase</button>
+      </div>
+      <div class="tab-bar">
+        <button class="active" onclick="tab('notes',this)">Notebook</button>
+        <button onclick="tab('marks',this)">Marks</button>
+        <button onclick="tab('meta',this)">Metadata</button>
+      </div>
+      <div class="tab-panel active" id="tab-notes">
+        <button class="note-card" id="noteAdd" style="border-style:dashed;text-align:center;color:var(--ink-400,#9ca3af);cursor:pointer">
+          + Add note to current page (<span id="notePg">1</span>)
+        </button>
+        <div id="noteList" style="margin-top:.5rem"></div>
+      </div>
+      <div class="tab-panel" id="tab-marks">
+        <div id="markList"></div>
+      </div>
+      <div class="tab-panel" id="tab-meta">
+        <div id="metaBox" class="empty">No metadata loaded</div>
+      </div>
+    </div>
+</div>
+
+<textarea class="ni" id="noteEditor" style="display:none" placeholder="Note text…"></textarea>
+<div class="toast" id="toast"></div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+<script>
+let pdfDoc = null;
+let paperMeta = null;
+let marks = [];          // client state; mirrors /marks
+let notes = [];          // client state; mirrors /notes
+let draft = { text: '', page: null };
+let undoStack = [];     // [{marks,notes,draft}]
+let redoStack = [];
+let color = '#f4d75e';
+let tool = 'rectangle';
+let selected = null;      // selected mark id
+let saveTimer = null;
+
+const API = pid => '/api/rag/review/paper/' + encodeURIComponent(pid);
+const RAWPDF = pid => '/api/rag/pdf?id=' + encodeURIComponent(pid);
+
+// ── help & types ───────────────────────────────────────────────────────────────
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function uuid(){ return (crypto.randomUUID ? crypto.randomUUID() : ('x-' + Date.now() + '-'+ Math.random().toString(16).slice(2)); }
+function toast(m){ const t = document.getElementById('toast'); t.textContent = m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1800); }
+function setPill(m){ document.getElementById('statusPill').textContent = m; }
+
+// ── undo / redo ──────────────────────────────────────────────────────────
+function pushHistory(){ undoStack.push(JSON.parse(JSON.stringify({marks, notes, draft})); if (undoStack.length > 50) undoStack.shift(); redoStack = []; refreshUndoRedo(); }
+function refreshUndoRedo(){
+   document.getElementById('undoBtn').style.opacity = undoStack.length ? 1 : .4;
+   document.getElementById('redoBtn').style.opacity = redoStack.length ? 1 : .4;
+}
+function undo(){ if (!undoStack.length) return; redoStack.push(JSON.parse(JSON.stringify({marks,notes,draft})); const s = undoStack.pop(); marks = s.marks; notes = s.notes; draft = s.draft; redraw(); renderMarks(); renderNotes(); syncPageLabels(); refreshUndoRedo(); toast('Undo'); }
+function redo(){ if (!redoStack.length) return; undoStack.push(JSON.parse(JSON.stringify({marks,notes,draft})); const s = redoStack.pop(); marks = s.marks; notes = s.notes; draft = s.draft; redraw(); renderMarks(); renderNotes(); syncPageLabels(); refreshUndoRedo(); toast('Redo'); }
+
+// ── viewer ───────────────────────────────────────────────────────────────
+function Pane(side){
+   this.side = side;
+   this.canvas = document.getElementById(side+'canvas');
+   this.ctx = this.canvas.getContext('2d');
+   this.svg = document.getElementById(side+'over');
+   this.wrap = document.getElementById(side+'wrap');
+   this.viewer = document.getElementById(side+'viewer');
+   this.page = 1; this.scale = 1.2; this.natW = 1; this.natH = 1; this.viewport = null;
+   this.rendering = false;
+   this.outScale = window.devicePixelRatio || 1;
+   this.canvas.addEventListener('mousedown', e => this._down(e));
+   this.canvas.addEventListener('mousemove', e => this._move(e));
+   this.canvas.addEventListener('mouseup', e => this._up(e));
+}
+const Lpane = new Pane('L');
+const Rpane = new Pane('R');
+function pane(side){ return side === 'L' ? Lpane : Rpane; }
+
+Pane.prototype.num = function(p){ if (!pdfDoc || this.rendering) return; const t = Math.min(Math.max(1,p),pdfDoc.numPages); if (t === this.page) return; this.page = t; this.render(); };
+Pane.prototype.turn = function(d){ this.num(this.page + d); };
+Pane.prototype.zoom = function(d){ this.scale = Math.min(3.0, Math.max(0.5, this.scale + d)); document.getElementById(this.side+'Zoom').textContent = Math.round(this.scale/1.2*100)+'%'; this.render(); };
+Pane.prototype.syncTo = function(targetSide){ pane(targetSide).num(this.page); };
+
+Pane.prototype.render = async function(){
+   if (!pdfDoc || this.rendering) return;
+   this.rendering = true;
+   try {
+     const page = await pdfDoc.getPage(this.page);
+     const vp = page.getViewport({ scale: this.scale });
+     const os = this.outScale;
+     this.canvas.width = Math.floor(vp.width*os);
+     this.canvas.height = Math.floor(vp.height*os);
+     this.canvas.style.width = vp.width+'px';
+     this.canvas.style.height = vp.height+'px';
+     this.wrap.style.width = vp.width+'px';
+     await page.render({ canvasContext: this.ctx, viewport: vp, transform: os!==1 ? [os,0,0,os,0,0] : null }).promise;
+     if (this.side === 'L'){
+       const tl = document.getElementById('Ltext');
+       tl.innerHTML = ''; tl.style.width = vp.width+'px'; tl.style.height = vp.height+'px';
+       tl.style.setProperty('--scale-factor', this.scale);
+       try { const tc = await page.getTextContent();
+         await pdfjsLib.renderTextLayer({ textContentSource: tc, container: tl, viewport: vp, textDivs: [] }).promise; }
+       catch(_){}
+     }
+     this.viewport = vp;
+     this.natW = vp.width / this.scale;    // PDF user-space width in px at scale 1
+     this.natH = vp.height / this.scale;
+     this._drawOverlay();
+     document.getElementById(this.side+'Num').textContent = this.page;
+   } catch(e){ this.load.style.display='block'; this.load.textContent = 'Render error: '+e.message; }
+   this.rendering = false;
+   syncPageLabels();
+};
+
+Pane.prototype._drawOverlay = function(){
+   const vp = this.viewport; if (!vp) return;
+   this.svg.setAttribute('width', vp.width);
+   this.svg.setAttribute('height', vp.height);
+   this.svg.setAttribute('viewBox', '0 0 '+vp.width+' '+vp.height);
+   this.svg.innerHTML = '';
+   const W = vp.width, H = vp.height;
+   marks.filter(m => Number(m.page) === this.page).forEach(m => this._drawMark(m, W, H));
+};
+Pane.prototype._drawMark = function(m, W, H){
+   const svg = this.svg;
+   (m.rects || []).forEach(r => {
+     const x = (r.x||0)*W, w = (r.width||0)*W, h = (r.height||0)*H;
+     const top = (1 - (r.y||0) - (r.height||0)) * H;
+     const el = document.createElementNS('http://www.w3.org/2000/svg', m.type === 'ellipse' ? 'ellipse' : 'rect');
+     if (m.type === 'ellipse'){
+       el.setAttribute('cx', x + w/2); el.setAttribute('cy', top + h/2);
+       el.setAttribute('rx', Math.max(0.5, w/2)); el.setAttribute('ry', Math.max(0.5, h/2));
+     } else {
+       el.setAttribute('x', x); el.setAttribute('y', top);
+       el.setAttribute('width', Math.max(0.5,w)); el.setAttribute('height', Math.max(0.5,h));
+     }
+     el.setAttribute('fill', m.type === 'highlight' ? 'rgba(244,215,94,0.42)' : 'rgba(14,124,110,0.18)');
+     el.setAttribute('stroke', m.color || '#f4d75e');
+     el.setAttribute('stroke-width', m.id === selected ? '2.5' : '1.5');
+     el.style.pointerEvents = 'auto';
+     el.style.cursor = 'pointer';
+     el.addEventListener('click', e => { e.stopPropagation(); selectMark(m.id); });
+     svg.appendChild(el);
+   });
+};
+
+// ── actions ──────────────────────────────────────────────────────────────
+Pane.prototype._down = function(e){
+   if (!pdfDoc) return;
+   if (this.side === 'L'){ /* highlight mode allows text selection */ }
+   this.canvas.style.cursor = 'crosshair';
+   const r = this.canvas.getBoundingClientRect();
+   this.ds = { x0: e.clientX - r.left, y0: e.clientY - r.top, x1: e.clientX - r.left, y1: e.clientY - r.top };
+};
+Pane.prototype._move = function(e){
+   if (!this.ds) return;
+   const r = this.canvas.getBoundingClientRect();
+   this.ds.x1 = e.clientX - r.left; this.ds.y1 = e.clientY - r.top;
+};
+Pane.prototype._up = async function(){
+   if (!this.ds) return;
+   this.canvas.style.cursor = '';
+   const p = this, x = this.ds.x1, y = this.ds.y1;
+   const ds = this.ds;
+   this.ds = null;
+   const w = Math.abs(x - ds.x0);
+   const h = Math.abs(y - ds.y0);
+   if (w < 6 || h < 6) return;
+   const nx = Math.min(ds.x0, x);
+   const ny = Math.min(ds.y0, y);
+   if (w >= 6 && h >= 6){
+     addMark({ type: tool, page: p.page, color, note: '',
+       rects: [{ x: nx / p.viewport.width, y: 1 - (ny + h) / p.viewport.height, width: w / p.viewport.width, height: h / p.viewport.height }] });
+   }
+   this.ds = null;
+};
+
+function addMark(m){
+   m.id = m.id || uuid();
+   m.color = m.color || color; m.note = m.note || '';
+   marks.push(m);
+   pushHistory();
+   redraw(); renderMarks(); scheduleSave();
+   toast(m.type + ' added');
+}
+function eraseActive(){ if (!selected) return;
+   marks = marks.filter(m => m.id !== selected); selected = null;
+   pushHistory(); redraw(); renderMarks(); scheduleSave(); toast('Erased'); }
+function updateMarkNote(id, note){ const m = marks.find(x => x.id === id); if (!m) return;
+   m.note = note; pushHistory(); renderMarks(); scheduleSave(); }
+function deleteMark(id){ marks = marks.filter(m => m.id !== id);
+   if (selected === id) selected = null;
+   pushHistory(); redraw(); renderMarks(); scheduleSave(); toast('Deleted'); }
+
+// ── notebook ────────────────────────────────────────────────────────────
+function addNote(text, page){
+   text = (text || '').trim(); if (!text) return;
+   notes.push({ id: uuid(), page: page || Lpane.page, text });
+   pushHistory(); renderNotes(); scheduleSave(); toast('Note added');
+}
+function updateNote(id, text){ const n = notes.find(x => x.id === id); if (!n) return;
+   n.text = text; pushHistory(); renderNotes(); scheduleSave(); }
+function deleteNote(id){ notes = notes.filter(n => n.id !== id);
+   pushHistory(); renderNotes(); scheduleSave(); toast('Note deleted'); }
+
+// ── rendering ─────────────────────────────────────────────────────────
+function renderMarks(){
+   const box = document.getElementById('markList');
+   if (!marks.length){ box.innerHTML = '<div class="empty">No marks yet. Pick a tool and drag on a page.</div>'; return; }
+   box.innerHTML = marks.map(m => `
+     <div class="mark-card" style="border-left:4px solid ${m.color||'#f4d75e'}" onclick="selectMark('${m.id}')">
+       <span class="sw" style="background:${m.color||'#f4d75e'}"></span>
+       <div style="flex:1;min-width:0">
+         <div class="meta">${(m.type||'mark').toUpperCase()} · p${m.page} · ${m.rects?m.rects.length:0} rect(s)</div>
+         <textarea class="ni" style="min-height:auto;margin-top:4px;max-height:100px" placeholder="mark note…" value="${esc(m.note||='')}" onchange="updateMarkNote('${m.id}', this.value)"></textarea>
+       </div>
+       <button class="toolbar-btn" onclick="deleteMark('${m.id}')" style="color:#ef4443">✕</button>
+     </div>`).join('');
+}
+function renderNotes(){
+   const box = document.getElementById('noteList');
+   document.getElementById('notePg').textContent = Lpane.page;
+   if (!notes.length){ box.innerHTML = '<div class="empty">No notes yet. Add one to the current page.</div>'; return; }
+   const byPage = {};
+   notes.forEach(n => { (byPage[n.page] = byPage[n.page]||[]).push(n); });
+   box.innerHTML = Object.keys(byPage).sort((a,b)=>(+a)-(+b)).map(pg =>
+   `<div style="margin-bottom:.5rem">
+     <div style="font-size:11px;color:var(--ink-400);margin-bottom:.25rem">Page ${pg} <button class="toolbar-btn" style="padding:.05rem .35rem;font-size:11px" onclick="jumpTo(${pg})">↗</button></div>
+     ${byPage[pg].map(n => `
+       <div class="note-card" onclick="jumpTo(${n.page})">
+         <div class="pg">${esc(n.id).slice(0,8)} · p${n.page}</div>
+         <div class="txt">${esc(n.text)}</div>
+       </div>`).join('')}
+     </div>`).join('');
+}
+function renderMeta(){
+   const b = document.getElementById('metaBox');
+   if (!paperMeta){ b.className = 'empty'; b.textContent = 'No metadata (paper not in library yet?)'; return; }
+   const m = paperMeta;
+   b.className = '';
+   b.innerHTML = `
+     <div style="font-size:14px;font-weight:600;line-height:1.2">${esc(m.title||PID)}</div>
+     <div style="font-size:12px;color:var(--ink-500);margin-top:.25rem">${esc((m.authors||'').replace(/[;,|]/g,','))}</div>
+     <div style="font-size:11px;color:var(--ink-400);margin-top:.4rem">${m.year||''} ${m.journal?' · '+esc(m.journal):''} ${m.doi?' · '+esc(m.doi):''}</div>
+     ${m.citation_key ? `<div style="font-size:11px;color:var(--ink-400);margin-top:.3rem">@${esc(m.citation_key)}</div>` : ''}
+     ${m.abstract ? `<div style="font-size:12px;line-height:1.4;margin-top:.6rem;white-space:pre-wrap">${esc(m.abstract).slice(0,1500)}</div>` : ''}
+     ${m.summary ? `<div style="font-size:12px;line-height:1.4;margin-top:.6rem;padding:.5rem;border-left:3px solid var(--ink-300);white-space:pre-wrap">${esc(m.summary).slice(0,1200)}</div>` : ''}
+   `;
+}
+
+// ── app logic ─────────────────────────────────────────────────────────
+function syncPageLabels(){
+   document.getElementById('lpNum').textContent = Lpane.page;
+   document.getElementById('rpNum').textContent = Rpane.page;
+}
+function syncFrom(targetSide){ pane(targetSide).num(Lpane.page); }
+function matchPage(){ Rpane.num(Lpane.page); Rpane.viewer.scrollTop = 0; toast('Matched R → L page'); }
+function setTool(t){ tool = t;
+   document.querySelectorAll('[data-tool]').forEach(b => b.classList.toggle('active', b.dataset.tool === t));
+}
+function addNote(text, page){
+   text = (text || '').trim(); if (!text) return;
+   notes.push({ id: uuid(), page: page || Lpane.page, text });
+   pushHistory(); renderNotes(); scheduleSave(); toast('Note added');
+}
+function updateNote(id, text){ const n = notes.find(x => x.id === id); if (!n) return;
+   n.text = text; pushHistory(); renderNotes(); scheduleSave(); }
+function deleteNote(id){ notes = notes.filter(n => n.id !== id);
+   pushHistory(); renderNotes(); scheduleSave(); toast('Note deleted'); }
+function editNote(id){ const n = notes.find(x => x.id === id); if (!n) return;
+   document.getElementById('noteEditor').style.display='block';
+   document.getElementById('noteEditor').value = n.text;
+   document.getElementById('noteEditor').focus();
+   document.getElementById('noteAdd').style.display='none';
+   window.activeEdit = id;
+}
+function newNote(){
+   document.getElementById('noteEditor').style.display='block';
+   document.getElementById('noteEditor').value = '';
+   document.getElementById('noteEditor').focus();
+   document.getElementById('noteAdd').style.display='none';
+}
+document.getElementById('noteAdd').onclick = newNote;
+document.getElementById('noteEditor').addEventListener('keydown', e => {
+   if ((e.metaKey || e.ctrlKey) && e.key === 'Enter'){
+     if (window.activeEdit) updateNote(window.activeEdit, document.getElementById('noteEditor').value, Lpane.page);
+     else addNote(document.getElementById('noteEditor').value, Lpane.page);
+     document.getElementById('noteEditor').style.display='none';
+     document.getElementById('noteAdd').style.display='block';
+     window.activeEdit = null;
+   }
+});
+document.getElementById('noteEditor').addEventListener('blur', () => {
+   if (window.activeEdit) {
+     updateNote(window.activeEdit, document.getElementById('noteEditor').value);
+     document.getElementById('noteEditor').style.display='none';
+     document.getElementById('noteAdd').style.display='block';
+     window.activeEdit = null;
+   }
+});
+
+function pushHistory(){
+   undoStack.push(JSON.parse(JSON.stringify({marks, notes, draft}));
+   if (undoStack.length > 50) undoStack.shift();
+   redoStack = [];
+   refreshUndoRedo();
+}
+function refreshUndoRedo(){
+   document.getElementById('undoBtn').style.opacity = undoStack.length ? 1 : .4;
+   document.getElementById('redoBtn').style.opacity = redoStack.length ? 1 : .4;
+}
+function undo(){ if (!undoStack.length) return; redoStack.push(JSON.parse(JSON.stringify({marks,notes,draft}));
+   const s = undoStack.pop(); marks = s.marks; notes = s.notes; draft = s.draft;
+   redraw(); renderMarks(); renderNotes(); syncPageLabels(); refreshUndoRedo(); toast('Undo'); }
+function redo(){ if (!redoStack.length) return; undoStack.push(JSON.parse(JSON.stringify({marks,notes,draft}));
+   const s = redoStack.pop(); marks = s.marks; notes = s.notes; draft = s.draft;
+   redraw(); renderMarks(); renderNotes(); syncPageLabels(); refreshUndoRedo(); toast('Redo'); }
+function scheduleSave(){ clearTimeout(saveTimer); setPill('saving…');
+   saveTimer = setTimeout(saveAll, 700); }
+async function saveAll(){
+   if (!currentPid) return;
+   try {
+     await fetch(API(currentPid) + '/marks/snapshot', { method:'PUT', headers:{'Content-Type':'application/json'},\
+        body: JSON.stringify({ marks: marks.map(m => ({ id:m.id, type:m.type, page:m.page, rects:m.rects, color:m.color, note:m.note })), notes: notes }) });
+     await fetch(API(currentPid) + '/notes/snapshot', { method:'PUT', headers:{'Content-Type':'application/json'},\
+        body: JSON.stringify({ notes: notes.map(n => ({ id:n.id, page:n.page, text:n.text })), marks: marks }) });
+     setPill('saved ✓');
+   } catch(e){ setPillo('save failed: '+e.message); }
+}
+async function loadSnapshot(){
+   if (!currentPid) return;
+   try {
+     const j = await (await fetch(API(currentPid))).json();
+     marks = (j.marks || []).map(m => Object.assign({}, m, { rects: m.rects || [] }));
+     notes = j.notes || [];
+   } catch(e){ marks = []; notes = []; }
+}
+function setPill(m){ document.getElementById('statusPill').textContent = m; }
+function toast(m){ const t = document.getElementById('toast'); t.textContent = m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1800); }
+
+// ── app initial ─────────────────────────────────────────────────────────
+async function openPaper(pid){
+   pid = (pid || currentPid || '').trim();
+   if (!pid) return;
+   currentPid = pid;
+   document.getElementById('paperInput').value = pid;
+   setPill('loading '+pid+'…');
+   try { paperMeta = await (await fetch('/api/rag/paper?id='+encodeURIComponent(pid))).json(); }
+   catch(_){ paperMeta = null; }
+   renderMeta();
+   marks = []; notes = []; selected = null;
+   
+   if (typeof pdfjsLib === 'undefined'){
+     document.getElementById('tab-notes').classList.add('active');
+     toast('PDF.js unavailable');
+     await loadSnapshot(); renderMarks(); renderNotes();
+     return;
+   }
+   try {
+     pdfDoc = await pdfjsLib.getDocument(RAWPDF(pid)).promise;
+     Lpane.scale = Rpane.scale = 1.2;
+     document.getElementById('lpZoom').textContent = '100%';
+     document.getElementById('rpZoom').textContent = '100%';
+     await loadSnapshot();
+     await Lpane.render();
+     await Rpane.render();
+     renderMarks(); renderNotes(); syncPageLabels();
+     setPill(marks.length+' marks · '+notes.length+' notes · saved ✓');
+   } catch(e){
+     setPill('error');
+     toast('Could not load PDF for '+pid+'\nCheck if it is indexed in your library.');
+   }
+}
+document.getElementById('loadBtn').onclick = () => openPaper(document.getElementById('paperInput').value || PID_SEED);
+document.getElementById('paperInput').addEventListener('keydown', e => { if (e.key === 'Enter') openPaper(e.target.value); });
+
+async function browse(){
+   let list = [];
+   try { list = await (await fetch('/api/rag/review/papers')).json(); } catch(_){}
+   if (!list.length){ toast('No reviews yet'); return; }
+   const sel = prompt('Papers with reviews:\n\n'+list.map((p,i)=> (i+1)+'. '+(p.title||p.paper_id)).join('\n')+'\n\nEnter number or paper id:', '1');
+   if (!sel) return;
+   const n = parseInt(sel, 10);
+   openPaper((n && list[n-1]) ? list[n-1].paper_id : sel);
+}
+document.getElementById('browseBtn').onclick = browse;
+
+async function exportNotes(){
+   if (!currentPid) return;
+   try {
+     const t = await (await fetch(API(currentPid) + '/export')).text();
+     const blob = new Blob([t], { type:'text/plain' });
+     const a = document.createElement('a');
+     a.href = URL.createObjectURL(blob);
+     a.download = 'review-'+currentPid.replace(/[^a-z0-9._-]/gi,'_')+'.txt';
+     a.click(); toast('Exported');
+   } catch(e){ toast('Export failed: '+e.message); }
+}
+document.getElementById('exportBtn').onclick = exportNotes;
+document.getElementById('saveBtn').onclick = () => {
+   if (saveTimer) clearTimeout(saveTimer);
+   saveAll();
+};
+
+// ── buttons ────────────────────────────────────────────────────────────
+document.getElementById('undoBtn').onclick = undo;
+document.getElementById('redoBtn').onclick = redo;
+document.getElementById('syncBtn').onclick = () => {
+  const r = Rpane.page;
+  Rpane.num(r);
+  syncPageLabels();
+};
+document.getElementById('matchBtn').onclick = () => {
+  Rpane.num(Lpane.page);
+  Rpane.viewer.scrollTop = 0;
+  toast('Matched R → L page '+Lpane.page);
+};
+document.getElementById('eraseBtn').onclick = eraseActive;
+document.getElementById('noteAdd').onclick = newNote;
+
+// ── initial boot ──────────────────────────────────────────────────────
+if (PID_SEED) openPaper(PID_SEED);
+else setPill('Enter a paper id to open, or click "Browse reviewed"');
+refreshUndoRedo();
+</script>
+{% endblock %}

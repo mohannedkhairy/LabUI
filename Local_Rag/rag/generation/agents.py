@@ -12,6 +12,12 @@ Each agent dict carries:
         validator should flag [n] markers not present in the retrieved
         set. Prose-drafting agents (writing) set this False because they emit
         placeholder markers like [ref]/[X] by design.
+    skill (optional)                                — id of a skill pack in
+        Local_Rag/rag/skills/. When set, resolve_system() appends a
+        section-specific brief assembled by skills.loader on top of the agent's
+        own system prompt. The brief is built per request (it depends on which
+        manuscript section is being written), which is why callers must go
+        through resolve_system() rather than reading agent["system"] directly.
 """
 
 # ── Shared quality spine ──────────────────────────────────────────────────────
@@ -46,6 +52,34 @@ _CITE = (
     "section — a numbered References list is appended automatically.\n"
     "- If the excerpts do not support a claim, say so plainly — never fabricate "
     "a finding or a citation to fill the gap.\n"
+)
+
+
+# ── Style rules used when no skill pack is installed ──────────────────────────
+# Superseded by skills/nanobubble-paper-writer when that is present: the skill's
+# numbers are measured from a real corpus, these were written from memory. Kept
+# so the writing agent still behaves sensibly on a bare install.
+_WRITING_FALLBACK = (
+    "\n\nStyle rules:\n"
+    "- Voice: passive for observations and methods ('the zeta potential was "
+    "measured'); active 'we' for interpretations and choices ('we attribute "
+    "this to…'). Never first-person singular.\n"
+    "- Lead every results sentence with the specific measurement — number, "
+    "unit, condition, figure ref — not an announcement. 'Stability' is never "
+    "a measurement; report concentration retained, size, zeta potential, or "
+    "dissolution rate instead.\n"
+    "- Calibrate hedging to evidence: direct claims when data are strong "
+    "('X leads to Y'); 'can be attributed to' / 'is likely due to' for "
+    "supported inference; 'may' / 'could' only for genuine extrapolation. "
+    "Do not over-hedge.\n"
+    "- Mechanism over description: observation → mechanism → implication.\n"
+    "- Vary transitions (However, Therefore, Furthermore, By contrast, In "
+    "particular); never repeat one within three paragraphs. Use 'data' as "
+    "plural.\n"
+    "- Banned words: delve, crucial, pivotal, remarkable, profound, "
+    "exceptional, utilized, landscape, underscore, 'it is important to "
+    "note', 'in recent years'. Avoid 'significantly' unless paired with a "
+    "statistical test, and avoid vague 'stable/stability/behavior'.\n"
 )
 
 
@@ -385,32 +419,17 @@ AGENTS: dict[str, dict] = {
             "Compose a conclusions paragraph synthesizing that buffering with Na2CO3 preserved 90% NB concentration over 30 days vs 65% loss unbuffered.",
             "Rewrite this sentence in my style: 'The bubbles were very stable and showed good results.'",
         ],
+        "skill": "nanobubble-paper-writer",
         "system": (
-            "You are a scientific co-author who drafts manuscript prose in the "
-            "user's own established writing style. Two inputs shape every passage: "
-            "the STYLE SAMPLES (the user's previously written text — match their "
-            "voice, sentence rhythm, hedging level, and vocabulary) and the local "
-            "paper excerpts (factual grounding and citations).\n\n"
-            "Style rules distilled from the user's published corpus:\n"
-            "- Voice: passive for observations and methods ('the zeta potential was "
-            "measured'); active 'we' for interpretations and choices ('we attribute "
-            "this to…'). Never first-person singular.\n"
-            "- Lead every results sentence with the specific measurement — number, "
-            "unit, condition, figure ref — not an announcement. 'Stability' is never "
-            "a measurement; report concentration retained, size, zeta potential, or "
-            "dissolution rate instead.\n"
-            "- Calibrate hedging to evidence: direct claims when data are strong "
-            "('X leads to Y'); 'can be attributed to' / 'is likely due to' for "
-            "supported inference; 'may' / 'could' only for genuine extrapolation. "
-            "Do not over-hedge.\n"
-            "- Mechanism over description: observation → mechanism → implication.\n"
-            "- Vary transitions (However, Therefore, Furthermore, By contrast, In "
-            "particular); never repeat one within three paragraphs. Use 'data' as "
-            "plural.\n"
-            "- Banned words: delve, crucial, pivotal, remarkable, profound, "
-            "exceptional, utilized, landscape, underscore, 'it is important to "
-            "note', 'in recent years'. Avoid 'significantly' unless paired with a "
-            "statistical test, and avoid vague 'stable/stability/behavior'.\n\n"
+            "You are a scientific co-author who drafts manuscript prose for a "
+            "peer-reviewed journal in colloid and interface science. Three inputs "
+            "shape every passage: the WRITING STANDARD below (measured targets — "
+            "treat its numbers as binding), the STYLE SAMPLES (the user's own "
+            "previously written text — match their voice and vocabulary), and the "
+            "local paper excerpts (factual grounding and citations). Where the "
+            "standard and a style sample disagree on register, follow the standard; "
+            "where they disagree on vocabulary or subject-matter phrasing, follow "
+            "the sample.\n\n"
             "Citations: when you state a fact taken from a retrieved excerpt, cite "
             "the verbatim [n]. Where the user must later insert a reference "
             "you do not have, use a [ref] placeholder. Do not invent author names, "
@@ -431,6 +450,48 @@ AGENTS: dict[str, dict] = {
 
 DEFAULT_AGENT = "chat"
 
+# Manuscript sections the writing agent can be pointed at. Mirrors
+# skills.loader.SECTIONS; duplicated as a literal so this module imports even
+# when no skill pack is installed.
+WRITING_SECTIONS = [
+    ("intro",      "Introduction"),
+    ("methods",    "Methods"),
+    ("results",    "Results"),
+    ("discussion", "Discussion"),
+    ("conclusion", "Conclusions"),
+    ("abstract",   "Abstract"),
+    ("reviewer",   "Response to reviewers"),
+]
+
 
 def get_agent(agent_id: str) -> dict:
     return AGENTS.get(agent_id, AGENTS[DEFAULT_AGENT])
+
+
+def resolve_system(
+    agent_id: str,
+    section: str | None = None,
+    mode: str = "draft",
+) -> str:
+    """The system message for a request — agent prompt plus, for skill-backed
+    agents, a section-specific brief assembled from the installed skill pack.
+
+    Falls back to the built-in style rules when the skill pack is missing or
+    fails to load, so the app never hard-depends on a skill being installed.
+    """
+    agent = get_agent(agent_id)
+    base = agent["system"]
+    skill = agent.get("skill")
+    if not skill:
+        return base
+
+    brief = ""
+    try:
+        from skills.loader import build_writing_brief
+        brief = build_writing_brief(section=section, mode=mode, skill=skill)
+    except Exception:
+        brief = ""
+
+    if not brief:
+        return base + _WRITING_FALLBACK
+    return base + "\n\n" + brief

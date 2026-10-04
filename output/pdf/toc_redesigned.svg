@@ -1,0 +1,251 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="863.28pt" height="364.83pt" viewBox="0 0 1600 676">
+  <title>Graphical abstract: nanoparticle segregation and association with nanobubbles</title>
+  <desc>Editable vector artwork with separated groups for background, headings, silica nanoparticles, alumina nanoparticles, nanobubbles, ions, and labels.</desc>
+
+  <defs>
+    <linearGradient id="headerRule" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#49B9DA"/>
+      <stop offset="0.48" stop-color="#85D8E8"/>
+      <stop offset="0.52" stop-color="#8FD5CB"/>
+      <stop offset="1" stop-color="#36A6A0"/>
+    </linearGradient>
+    <radialGradient id="bubbleFill" cx="31%" cy="23%" r="79%">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.94"/>
+      <stop offset="0.16" stop-color="#DDF8FF" stop-opacity="0.78"/>
+      <stop offset="0.55" stop-color="#83D9F2" stop-opacity="0.47"/>
+      <stop offset="0.84" stop-color="#27A9D4" stop-opacity="0.30"/>
+      <stop offset="1" stop-color="#0A7FAA" stop-opacity="0.20"/>
+    </radialGradient>
+    <linearGradient id="bubbleRim" x1="0.12" y1="0.08" x2="0.88" y2="0.92">
+      <stop offset="0" stop-color="#DDFBFF"/>
+      <stop offset="0.28" stop-color="#59C9E8"/>
+      <stop offset="0.72" stop-color="#168EBE"/>
+      <stop offset="1" stop-color="#7DD7EA"/>
+    </linearGradient>
+    <radialGradient id="silicaFill" cx="29%" cy="22%" r="82%">
+      <stop offset="0" stop-color="#FF9B76"/>
+      <stop offset="0.18" stop-color="#FF6B52"/>
+      <stop offset="0.58" stop-color="#E83335"/>
+      <stop offset="1" stop-color="#A9162C"/>
+    </radialGradient>
+    <linearGradient id="silicaRim" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFB08D"/>
+      <stop offset="0.5" stop-color="#E62D36"/>
+      <stop offset="1" stop-color="#8E1028"/>
+    </linearGradient>
+    <radialGradient id="aluminaFill" cx="28%" cy="20%" r="84%">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="0.22" stop-color="#EEF3F6"/>
+      <stop offset="0.62" stop-color="#B7C2C9"/>
+      <stop offset="1" stop-color="#737F89"/>
+    </radialGradient>
+    <linearGradient id="aluminaRim" x1="0.05" y1="0.05" x2="0.95" y2="0.95">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="0.42" stop-color="#C7D0D6"/>
+      <stop offset="1" stop-color="#6F7B85"/>
+    </linearGradient>
+    <clipPath id="aluminaClip">
+      <path d="M-49,-12 L-39,-31 L-20,-44 L5,-42 L22,-35 L43,-17 L46,2 L36,17 L42,30 L20,43 L1,39 L-20,46 L-39,31 L-48,12 Z"/>
+    </clipPath>
+    <radialGradient id="naFill" cx="30%" cy="20%" r="80%">
+      <stop offset="0" stop-color="#B9F3A0"/>
+      <stop offset="0.24" stop-color="#65D64E"/>
+      <stop offset="1" stop-color="#13963B"/>
+    </radialGradient>
+    <radialGradient id="clFill" cx="30%" cy="20%" r="80%">
+      <stop offset="0" stop-color="#D5E9FF"/>
+      <stop offset="0.24" stop-color="#69A7ED"/>
+      <stop offset="1" stop-color="#225CAE"/>
+    </radialGradient>
+    <filter id="softShadow" x="-35%" y="-35%" width="170%" height="170%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="3.2" result="blur"/>
+      <feOffset dy="4" result="offsetBlur"/>
+      <feColorMatrix in="offsetBlur" type="matrix" values="0 0 0 0 0.05 0 0 0 0 0.20 0 0 0 0 0.29 0 0 0 .20 0"/>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="particleShadow" x="-35%" y="-35%" width="170%" height="170%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="2.4" result="blur"/>
+      <feOffset dx="1" dy="3" result="offsetBlur"/>
+      <feColorMatrix in="offsetBlur" type="matrix" values="0 0 0 0 0.10 0 0 0 0 0.12 0 0 0 0 0.14 0 0 0 .25 0"/>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+
+    <g id="bubble">
+      <circle r="50" fill="#CDEFF8" opacity="0.26"/>
+      <circle r="47" fill="url(#bubbleFill)" stroke="url(#bubbleRim)" stroke-width="5"/>
+      <circle r="40.5" fill="none" stroke="#FFFFFF" stroke-opacity="0.48" stroke-width="1.8"/>
+      <ellipse cx="-17" cy="-18" rx="13" ry="8" fill="#FFFFFF" opacity="0.90" transform="rotate(-25 -17 -18)"/>
+      <ellipse cx="18" cy="25" rx="19" ry="6" fill="#BCEFFC" opacity="0.55" transform="rotate(-18 18 25)"/>
+      <path d="M-35,25 C-14,45 17,46 36,23" fill="none" stroke="#68CDE7" stroke-width="3" stroke-linecap="round" opacity="0.65"/>
+    </g>
+    <g id="silicaSphere">
+      <circle r="50" fill="url(#silicaFill)" stroke="url(#silicaRim)" stroke-width="3"/>
+      <ellipse cx="-17" cy="-18" rx="14" ry="8" fill="#FFD2BF" opacity="0.58" transform="rotate(-28 -17 -18)"/>
+      <path d="M-37,24 C-17,44 18,45 37,21" fill="none" stroke="#811027" stroke-width="2.5" opacity="0.32" stroke-linecap="round"/>
+    </g>
+    <g id="aluminaSphere">
+      <path d="M-49,-12 L-39,-31 L-20,-44 L5,-42 L22,-35 L43,-17 L46,2 L36,17 L42,30 L20,43 L1,39 L-20,46 L-39,31 L-48,12 Z"
+            fill="url(#aluminaFill)" stroke="url(#aluminaRim)" stroke-width="3.2" stroke-linejoin="round"/>
+      <g clip-path="url(#aluminaClip)" fill="none" stroke-linecap="round">
+        <path d="M-35,-24 L-8,-35 M3,-34 L31,-17 M-39,1 L-9,-8 M4,-6 L35,-19 M-31,26 L-6,12 M7,26 L34,10 M-4,-19 L0,16"
+              stroke="#FFFFFF" stroke-width="6.2" opacity="0.72"/>
+        <path d="M-31,-21 L-8,-30 M7,-29 L29,-16 M-34,4 L-10,-3 M8,-1 L31,-13 M-26,25 L-5,14 M10,23 L30,12 M0,-16 L3,14"
+              stroke="#6C7E8A" stroke-width="2.4" opacity="0.58"/>
+        <path d="M-41,15 C-21,34 14,38 38,16" stroke="#5F707C" stroke-width="2.4" opacity="0.30"/>
+      </g>
+      <path d="M-33,-27 C-22,-40 -5,-44 11,-40" fill="none" stroke="#FFFFFF" stroke-width="4" opacity="0.76" stroke-linecap="round"/>
+    </g>
+    <g id="ionPair">
+      <circle cx="-11" cy="0" r="8.5" fill="url(#naFill)" stroke="#0E8433" stroke-width="1.2"/>
+      <circle cx="11" cy="5" r="8.5" fill="url(#clFill)" stroke="#1D55A2" stroke-width="1.2"/>
+      <circle cx="-13" cy="-3" r="2.4" fill="#FFFFFF" opacity="0.82"/>
+      <circle cx="9" cy="2" r="2.4" fill="#FFFFFF" opacity="0.82"/>
+    </g>
+  </defs>
+
+  <g id="background">
+    <rect width="1600" height="676" fill="#FFFFFF"/>
+    <rect x="44" y="91" width="728" height="552" rx="24" fill="#F8FBFD" stroke="#D7E8EE" stroke-width="2"/>
+    <rect x="828" y="91" width="728" height="552" rx="24" fill="#F7FBFB" stroke="#D7E8E7" stroke-width="2"/>
+    <rect x="70" y="101" width="676" height="5" rx="2.5" fill="#7ACDE4" opacity="0.55"/>
+    <rect x="854" y="101" width="676" height="5" rx="2.5" fill="#72C9C0" opacity="0.55"/>
+    <rect x="792" y="88" width="16" height="558" rx="8" fill="#EDF5F7"/>
+    <rect x="74" y="630" width="1452" height="3" rx="1.5" fill="url(#headerRule)" opacity="0.48"/>
+  </g>
+
+  <g id="headings" font-family="Helvetica Neue, Arial, sans-serif" fill="#17242B">
+    <text x="408" y="62" text-anchor="middle" font-size="50" font-weight="700" letter-spacing="1.2">Segregation</text>
+    <text x="1192" y="62" text-anchor="middle" font-size="50" font-weight="700" letter-spacing="1.2">Association</text>
+  </g>
+
+  <g id="left-panel">
+    <g id="left-silica-particles" filter="url(#particleShadow)">
+      <g transform="translate(244 286) scale(0.80)"><use xlink:href="#silicaSphere"/></g>
+      <g transform="translate(340 270) scale(0.95)"><use xlink:href="#silicaSphere"/></g>
+      <g transform="translate(389 205) scale(0.40)"><use xlink:href="#silicaSphere"/></g>
+      <g transform="translate(289 340) scale(0.38)"><use xlink:href="#silicaSphere"/></g>
+      <g transform="translate(444 488) scale(0.91)"><use xlink:href="#silicaSphere"/></g>
+      <g transform="translate(365 543) scale(0.76)"><use xlink:href="#silicaSphere"/></g>
+      <g transform="translate(303 522) scale(0.37)"><use xlink:href="#silicaSphere"/></g>
+      <g transform="translate(344 444) scale(0.38)"><use xlink:href="#silicaSphere"/></g>
+      <g transform="translate(389 482) scale(0.37)"><use xlink:href="#silicaSphere"/></g>
+      <g transform="translate(449 563) scale(0.38)"><use xlink:href="#silicaSphere"/></g>
+      <g transform="translate(515 509) scale(0.40)"><use xlink:href="#silicaSphere"/></g>
+      <g transform="translate(356 606) scale(0.39)"><use xlink:href="#silicaSphere"/></g>
+      <g transform="translate(582 176) scale(0.17)"><use xlink:href="#silicaSphere"/></g>
+      <g transform="translate(542 283) scale(0.19)"><use xlink:href="#silicaSphere"/></g>
+      <g transform="translate(570 365) scale(0.18)"><use xlink:href="#silicaSphere"/></g>
+      <g transform="translate(632 222) scale(0.22)"><use xlink:href="#silicaSphere"/></g>
+      <g transform="translate(624 408) scale(0.18)"><use xlink:href="#silicaSphere"/></g>
+      <g transform="translate(694 346) scale(0.18)"><use xlink:href="#silicaSphere"/></g>
+    </g>
+
+    <g id="left-nanobubbles" filter="url(#softShadow)">
+      <g transform="translate(637 532) scale(0.32)"><use xlink:href="#bubble"/></g>
+      <g transform="translate(716 468) scale(0.42)"><use xlink:href="#bubble"/></g>
+      <g transform="translate(697 203) scale(0.34)"><use xlink:href="#bubble"/></g>
+      <g transform="translate(660 115) scale(0.30)"><use xlink:href="#bubble"/></g>
+      <g transform="translate(665 335) scale(0.27)"><use xlink:href="#bubble"/></g>
+      <g transform="translate(722 391) scale(0.23)"><use xlink:href="#bubble"/></g>
+      <g transform="translate(591 578) scale(0.23)"><use xlink:href="#bubble"/></g>
+      <g transform="translate(185 159) scale(0.28)"><use xlink:href="#bubble"/></g>
+      <g transform="translate(191 453) scale(0.54)"><use xlink:href="#bubble"/></g>
+      <g transform="translate(613 276) scale(0.30)"><use xlink:href="#bubble"/></g>
+      <g transform="translate(735 251) scale(0.22)"><use xlink:href="#bubble"/></g>
+      <g transform="translate(687 146) scale(0.22)"><use xlink:href="#bubble"/></g>
+    </g>
+
+    <g id="left-ions">
+      <g transform="translate(111 287) scale(0.82)"><use xlink:href="#ionPair"/></g>
+      <g transform="translate(164 164) scale(0.75)"><use xlink:href="#ionPair"/></g>
+      <g transform="translate(207 592) scale(0.75)"><use xlink:href="#ionPair"/></g>
+      <g transform="translate(292 156) scale(0.75)"><use xlink:href="#ionPair"/></g>
+      <g transform="translate(350 388) scale(0.75)"><use xlink:href="#ionPair"/></g>
+      <g transform="translate(410 119) scale(0.75)"><use xlink:href="#ionPair"/></g>
+      <g transform="translate(451 357) scale(0.75)"><use xlink:href="#ionPair"/></g>
+      <g transform="translate(499 597) scale(0.75)"><use xlink:href="#ionPair"/></g>
+      <g transform="translate(603 432) scale(0.75)"><use xlink:href="#ionPair"/></g>
+      <g transform="translate(646 134) scale(0.75)"><use xlink:href="#ionPair"/></g>
+      <g transform="translate(575 615) scale(0.75)"><use xlink:href="#ionPair"/></g>
+    </g>
+
+    <g id="left-labels" font-family="Helvetica Neue, Arial, sans-serif" fill="#26343B">
+      <text x="88" y="223" font-size="23" font-weight="650">Silica nanoparticles</text>
+      <path d="M228 230 C245 237 255 245 270 257" fill="none" stroke="#D5373B" stroke-width="2.5" stroke-linecap="round"/>
+      <circle cx="270" cy="257" r="3.2" fill="#D5373B"/>
+      <text x="619" y="592" font-size="23" font-weight="650">Nanobubbles</text>
+      <path d="M680 568 C682 556 684 550 690 540" fill="none" stroke="#219FC8" stroke-width="2.5" stroke-linecap="round"/>
+      <circle cx="690" cy="540" r="3.2" fill="#219FC8"/>
+      <text x="577" y="140" font-size="21" font-weight="650">NaCl</text>
+    </g>
+  </g>
+
+  <g id="right-panel">
+    <g id="right-alumina-particles" filter="url(#particleShadow)">
+      <g transform="translate(1079 231) scale(0.86 0.64) rotate(-16)"><use xlink:href="#aluminaSphere"/></g>
+      <g transform="translate(1121 198) scale(0.57 0.72) rotate(21)"><use xlink:href="#aluminaSphere"/></g>
+      <g transform="translate(1166 231) scale(0.84 0.64) rotate(-6)"><use xlink:href="#aluminaSphere"/></g>
+      <g transform="translate(1125 272) scale(0.61 0.77) rotate(13)"><use xlink:href="#aluminaSphere"/></g>
+      <g transform="translate(1050 278) scale(0.56 0.43) rotate(-28)"><use xlink:href="#aluminaSphere"/></g>
+      <g transform="translate(1209 286) scale(0.45 0.58) rotate(26)"><use xlink:href="#aluminaSphere"/></g>
+
+      <g transform="translate(1240 463) scale(0.53 0.41) rotate(-22)"><use xlink:href="#aluminaSphere"/></g>
+      <g transform="translate(1287 438) scale(0.45 0.57) rotate(8)"><use xlink:href="#aluminaSphere"/></g>
+      <g transform="translate(1331 465) scale(0.62 0.47) rotate(25)"><use xlink:href="#aluminaSphere"/></g>
+      <g transform="translate(1285 503) scale(0.43 0.55) rotate(-10)"><use xlink:href="#aluminaSphere"/></g>
+      <g transform="translate(1368 404) scale(0.38) rotate(31)"><use xlink:href="#aluminaSphere"/></g>
+      <g transform="translate(1396 451) scale(0.37) rotate(-17)"><use xlink:href="#aluminaSphere"/></g>
+      <g transform="translate(1226 398) scale(0.34) rotate(16)"><use xlink:href="#aluminaSphere"/></g>
+      <g transform="translate(1345 347) scale(0.31) rotate(-34)"><use xlink:href="#aluminaSphere"/></g>
+      <g transform="translate(1438 290) scale(0.30) rotate(24)"><use xlink:href="#aluminaSphere"/></g>
+      <g transform="translate(1404 250) scale(0.24) rotate(-12)"><use xlink:href="#aluminaSphere"/></g>
+      <g transform="translate(1482 327) scale(0.35) rotate(35)"><use xlink:href="#aluminaSphere"/></g>
+      <g transform="translate(1468 380) scale(0.34) rotate(-25)"><use xlink:href="#aluminaSphere"/></g>
+      <g transform="translate(1082 526) scale(0.26) rotate(14)"><use xlink:href="#aluminaSphere"/></g>
+      <g transform="translate(1149 574) scale(0.34) rotate(-31)"><use xlink:href="#aluminaSphere"/></g>
+    </g>
+
+    <g id="right-nanobubbles" filter="url(#softShadow)">
+      <g transform="translate(1237 431) scale(0.39)"><use xlink:href="#bubble"/></g>
+      <g transform="translate(1294 491) scale(0.59)"><use xlink:href="#bubble"/></g>
+      <g transform="translate(1347 544) scale(0.54)"><use xlink:href="#bubble"/></g>
+      <g transform="translate(1211 518) scale(0.50)"><use xlink:href="#bubble"/></g>
+      <g transform="translate(1365 390) scale(0.48)"><use xlink:href="#bubble"/></g>
+      <g transform="translate(1423 276) scale(0.32)"><use xlink:href="#bubble"/></g>
+      <g transform="translate(1464 300) scale(0.31)"><use xlink:href="#bubble"/></g>
+      <g transform="translate(1501 268) scale(0.42)"><use xlink:href="#bubble"/></g>
+      <g transform="translate(1454 352) scale(0.43)"><use xlink:href="#bubble"/></g>
+      <g transform="translate(1064 430) scale(0.38)"><use xlink:href="#bubble"/></g>
+      <g transform="translate(1496 506) scale(0.88)"><use xlink:href="#bubble"/></g>
+      <g transform="translate(991 543) scale(0.50)"><use xlink:href="#bubble"/></g>
+    </g>
+
+    <g id="right-ions">
+      <g transform="translate(912 283) scale(0.78)"><use xlink:href="#ionPair"/></g>
+      <g transform="translate(924 122) scale(0.78)"><use xlink:href="#ionPair"/></g>
+      <g transform="translate(1001 360) scale(0.78)"><use xlink:href="#ionPair"/></g>
+      <g transform="translate(1035 610) scale(0.78)"><use xlink:href="#ionPair"/></g>
+      <g transform="translate(1220 126) scale(0.78)"><use xlink:href="#ionPair"/></g>
+      <g transform="translate(1133 389) scale(0.78)"><use xlink:href="#ionPair"/></g>
+      <g transform="translate(1181 606) scale(0.78)"><use xlink:href="#ionPair"/></g>
+      <g transform="translate(1238 318) scale(0.78)"><use xlink:href="#ionPair"/></g>
+      <g transform="translate(1301 126) scale(0.78)"><use xlink:href="#ionPair"/></g>
+      <g transform="translate(1361 574) scale(0.78)"><use xlink:href="#ionPair"/></g>
+      <g transform="translate(1428 150) scale(0.78)"><use xlink:href="#ionPair"/></g>
+      <g transform="translate(1523 374) scale(0.78)"><use xlink:href="#ionPair"/></g>
+      <g transform="translate(1540 520) scale(0.78)"><use xlink:href="#ionPair"/></g>
+    </g>
+
+    <g id="right-labels" font-family="Helvetica Neue, Arial, sans-serif" fill="#26343B">
+      <text x="862" y="164" font-size="23" font-weight="650">Alumina nanoparticles</text>
+      <path d="M1061 171 C1074 178 1081 188 1088 202" fill="none" stroke="#7B8891" stroke-width="2.5" stroke-linecap="round"/>
+      <circle cx="1088" cy="202" r="3.2" fill="#7B8891"/>
+      <text x="1457" y="594" font-size="23" font-weight="650">Nanobubbles</text>
+      <path d="M1498 565 C1496 551 1495 541 1496 530" fill="none" stroke="#219FC8" stroke-width="2.5" stroke-linecap="round"/>
+      <circle cx="1496" cy="530" r="3.2" fill="#219FC8"/>
+      <text x="872" y="259" font-size="21" font-weight="650">NaCl</text>
+    </g>
+  </g>
+</svg>

@@ -9,23 +9,23 @@
 {% block content %}
 <style>
   .dropzone {
-    border: 2px dashed #c7d0ff;
+    border: 2px dashed var(--signal-wash);
     border-radius: 24px;
     background: linear-gradient(135deg, rgba(238,241,255,0.4) 0%, rgba(224,229,255,0.3) 100%);
     transition: all 0.2s ease;
     min-height: 280px;
   }
   .dropzone.hover {
-    border-color: #5e6bf0;
+    border-color: var(--signal);
     background: linear-gradient(135deg, rgba(238,241,255,0.8) 0%, rgba(199,208,255,0.5) 100%);
     transform: scale(1.01);
   }
   .dark .dropzone {
-    border-color: #353c8f;
+    border-color: var(--signal-ink);
     background: linear-gradient(135deg, rgba(29,32,80,0.4) 0%, rgba(46,53,115,0.3) 100%);
   }
   .dark .dropzone.hover {
-    border-color: #7c8aff;
+    border-color: var(--signal);
     background: linear-gradient(135deg, rgba(46,53,115,0.6) 0%, rgba(78,88,216,0.4) 100%);
   }
   .file-row { transition: all 0.2s ease; }
