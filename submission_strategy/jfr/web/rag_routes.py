@@ -1706,8 +1706,8 @@ def api_skill_phrasebank(skill: str, mine: bool = Query(True)):
 
     Rendered on request from the pack's phrase-bank.md, with the user's own
     sentences (mined from their writing-style samples) merged into each move —
-    so it can never go stale. Embedded in an iframe by the /research/phrasebank
-    tab so it keeps its own self-contained styling; it also works opened
+    so it can never go stale. Embedded in an iframe on the Writing Style page's
+    Phrase bank tab so it keeps its own self-contained styling; it also works opened
     directly. `mine=false` renders the corpus-only page.
     """
     if not re.match(r"^[\w\-]+$", skill):       # no traversal out of skills/

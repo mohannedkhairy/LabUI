@@ -42,8 +42,6 @@
   <!-- KaTeX math rendering (styles; JS loaded near </body>) -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
 
-  <!-- Compiled Tailwind (config: tailwind.config.cjs). Rebuild with `npm run build:css`. -->
-  <link rel="stylesheet" href="/static/app.css">
 
   <script src="https://unpkg.com/htmx.org@1.9.12"></script>
   <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
@@ -521,6 +519,11 @@
   }
   </style>
   {% block head %}{% endblock %}
+  <!-- Compiled Tailwind (config: tailwind.config.cjs; rebuild with `npm run build:css`).
+       Loaded LAST, where the Tailwind CDN used to inject its styles: templates
+       pair component classes with utilities (`tile tile-flush p-5`) and expect
+       the utility to win. -->
+  <link rel="stylesheet" href="/static/app.css">
 </head>
 <body class="h-full font-sans">
 
@@ -574,7 +577,6 @@
       ('/research/memory', 'M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4', 'Memory'),
       ('/research/notes',  'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4', 'Notes'),
       ('/research/style',  'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z', 'Writing Style'),
-      ('/research/phrasebank', 'M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253M8 9h3m-3 3h3', 'Phrase Bank'),
     ] %}
 
     {% macro nav_link(href, icon_d, label) %}
@@ -978,7 +980,7 @@
     ['Chat with Papers', '/research/chat', 'lab'], ['Paper Search', '/research/search', 'lab'],
     ['Knowledge Graph', '/research/graph', 'lab'], ['Memory', '/research/memory', 'lab'],
     ['Notes', '/research/notes', 'lab'], ['Writing Style', '/research/style', 'lab'],
-    ['Phrase Bank', '/research/phrasebank', 'lab'], ['Upload papers', '/research/upload', 'lab'],
+    ['Phrase bank (Writing Style)', '/research/style?tab=phrases', 'lab'], ['Upload papers', '/research/upload', 'lab'],
   ];
   let cmdkRows = [], cmdkIdx = 0, cmdkSeq = 0;
 

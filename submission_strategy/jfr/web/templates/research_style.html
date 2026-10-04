@@ -1,12 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Writing Style{% endblock %}
 {% block heading %}Writing Style{% endblock %}
-{% block subtitle %}Your own prose — the Style Writer matches its voice, and the Phrase Bank learns your sentence frames from it{% endblock %}
+{% block subtitle %}Your own prose, and the phrase bank it feeds — the Style Writer drafts in this voice{% endblock %}
 {% block header_actions %}
-  <a href="/research/phrasebank" class="toolbar-btn">
-    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
-    Phrase Bank
-  </a>
   <button onclick="newSample()" class="toolbar-btn btn-signal">
     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
     Add sample
@@ -39,12 +35,31 @@
   .conn-table th { font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase;
                    color: var(--ink-faint); font-weight: 500; }
   .conn-table .num { text-align: right; font-family: var(--font-mono); }
-  .conn-table .over { color: var(--signal); font-weight: 600; }
+  .conn-table .over { color: var(--danger); font-weight: 600; }
+  .style-tabs { width: auto; }
+  .style-tabs button { flex: none; white-space: nowrap; padding: 5px 14px; font-size: 12.5px;
+                       display: inline-flex; align-items: center; gap: 6px; }
+  .tab-n { font-family: var(--font-mono); font-size: 10.5px; color: var(--ink-faint); }
+  .style-tabs button.on .tab-n { color: var(--signal); }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="grid grid-cols-1 lg:grid-cols-12 gap-5 lg:h-[calc(100vh-13rem)]">
+<!-- Tabs: your samples · the phrase bank they feed -->
+<div class="flex items-center gap-3 mb-4 flex-wrap">
+  <div class="seg style-tabs" role="tablist" aria-label="Writing style views">
+    <button role="tab" data-tab="samples" onclick="showTab('samples')">
+      Samples <span class="tab-n" id="tab-n-samples"></span>
+    </button>
+    <button role="tab" data-tab="phrases" onclick="showTab('phrases')">
+      Phrase bank <span class="tab-n" id="tab-n-phrases"></span>
+    </button>
+  </div>
+  <span id="tab-hint" class="text-[12px]" style="color: var(--ink-faint)"></span>
+</div>
+
+<div id="tab-samples">
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-5 lg:h-[calc(100vh-15.5rem)]">
 
   <!-- Sample list -->
   <aside class="lg:col-span-4 tile tile-flush flex flex-col overflow-hidden max-h-[70vh] lg:max-h-none">
@@ -64,6 +79,9 @@
             <span class="text-[12px]" style="color: var(--ink-muted)">sentences in <b id="bank-moves">—</b> moves</span>
           </div>
           <div id="bank-note" class="text-[11px] mt-1.5" style="color: var(--ink-muted)">Mined from your samples.</div>
+          <span role="link" tabindex="0" class="inline-block text-[11px] mt-1.5 hover:underline" style="color: var(--data)"
+                onclick="event.stopPropagation(); showTab('phrases')"
+                onkeydown="if(event.key==='Enter'){event.stopPropagation(); showTab('phrases');}">Browse the phrase bank →</span>
         </div>
         <span role="button" tabindex="0" onclick="event.stopPropagation(); rebuildBank()"
               onkeydown="if(event.key==='Enter'){event.stopPropagation(); rebuildBank();}"
@@ -150,6 +168,36 @@
     </div>
   </section>
 </div>
+</div>
+
+<!-- Phrase bank: the skill pack's moves with your sentences filed beside them.
+     A self-contained page (rendered live by the API) in an iframe, so its
+     column layout and serif typography do not fight Tailwind. -->
+<div id="tab-phrases" style="display: none">
+  <div class="tile tile-flush flex flex-col overflow-hidden h-[calc(100vh-15.5rem)] min-h-[520px]">
+    <div class="flex items-center gap-2 px-4 py-2.5 flex-wrap" style="border-bottom: 1px solid var(--line)">
+      <span id="pb-subtitle" class="text-[12.5px] flex-1 min-w-[200px]" style="color: var(--ink-muted)">Rhetorical moves from published prose, with your own sentences beside them.</span>
+      <button onclick="updateFromSamples()" class="toolbar-btn" title="Re-read your samples and re-sort their sentences into the moves">
+        <span id="pb-update-icon">↻</span> Update from samples
+      </button>
+      <a id="pb-open" href="#" target="_blank" rel="noopener" class="toolbar-btn" title="Open the phrase bank on its own">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+        New tab
+      </a>
+    </div>
+    <div id="pb-loading" class="flex-1 flex items-center justify-center text-sm" style="color: var(--ink-faint)">Loading phrase bank…</div>
+    <div id="pb-missing" class="flex-1 items-center justify-center text-center p-8" style="display: none">
+      <div>
+        <h3 class="font-semibold text-sm mb-2">No phrase bank installed</h3>
+        <p class="text-xs max-w-lg mx-auto leading-relaxed" style="color: var(--ink-muted)">
+          It is rendered from a skill pack's <span class="font-mono">references/phrase-bank.md</span>
+          under <span class="font-mono">Local_Rag/rag/skills/&lt;pack&gt;/</span>. Install a pack and reload.
+        </p>
+      </div>
+    </div>
+    <iframe id="pb-frame" title="Phrase bank" class="flex-1 w-full" style="display: none; border: 0" referrerpolicy="no-referrer"></iframe>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -159,9 +207,93 @@ let bank = null;
 let samples = [];
 
 document.addEventListener('DOMContentLoaded', async () => {
+  showTab(new URLSearchParams(location.search).get('tab') === 'phrases' ? 'phrases' : 'samples', true);
   await Promise.all([loadSamples(), loadBank()]);
   if (samples.length) showOverview();
 });
+
+// ── Tabs ──────────────────────────────────────────────────────────────
+function showTab(name, initial) {
+  document.getElementById('tab-samples').style.display = name === 'samples' ? '' : 'none';
+  document.getElementById('tab-phrases').style.display = name === 'phrases' ? '' : 'none';
+  document.querySelectorAll('.style-tabs [data-tab]').forEach(b => {
+    b.classList.toggle('on', b.dataset.tab === name);
+    b.setAttribute('aria-selected', b.dataset.tab === name ? 'true' : 'false');
+  });
+  document.getElementById('tab-hint').textContent = name === 'phrases'
+    ? 'Teal lines are your sentences; filter by source "You" to see only yours.'
+    : 'Each sentence of your samples is filed under the phrase-bank move it performs.';
+  if (!initial) {
+    const u = new URL(location.href);
+    if (name === 'phrases') u.searchParams.set('tab', 'phrases'); else u.searchParams.delete('tab');
+    history.replaceState(null, '', u);
+  }
+  if (name === 'phrases') initPhraseBank();
+}
+
+// ── Phrase bank frame ─────────────────────────────────────────────────
+let pbReady = false, pbStarted = false;
+// The framed page names its colours differently (--mut, --firm, --wash…); map
+// the shell's live values onto those names so it follows the selected theme
+// and font set, not only light/dark.
+const PB_VAR_MAP = {
+  '--surface': '--surface', '--raised': '--raised', '--sunken': '--sunken', '--ink': '--ink',
+  '--mut': '--ink-muted', '--faint': '--ink-faint', '--line': '--line', '--firm': '--line-firm',
+  '--signal': '--signal', '--signal-ink': '--signal-ink', '--wash': '--signal-wash',
+  '--data': '--data', '--house': '--warn', '--grid': '--grid', '--danger': '--danger',
+  '--font-sans': '--font-sans', '--font-display': '--font-display', '--font-mono': '--font-mono',
+};
+function pushTheme() {
+  const f = document.getElementById('pb-frame');
+  if (!f || !f.contentWindow) return;
+  const cs = getComputedStyle(document.documentElement), vars = {};
+  for (const [inner, outer] of Object.entries(PB_VAR_MAP)) {
+    const v = cs.getPropertyValue(outer).trim();
+    if (v) vars[inner] = v;
+  }
+  const theme = document.documentElement.classList.contains('dark') ? 'dark' : 'light';
+  const fontHref = document.getElementById('font-css')?.href || null;
+  f.contentWindow.postMessage({type: 'labui-theme', theme, vars, fontHref}, '*');
+}
+window.addEventListener('message', (e) => {
+  if (e.data && e.data.type === 'labui-phrasebank-ready') { pbReady = true; pushTheme(); }
+});
+new MutationObserver(() => { if (pbReady) pushTheme(); })
+  .observe(document.documentElement, {attributes: true, attributeFilter: ['class', 'data-palette', 'data-font']});
+
+async function initPhraseBank() {
+  if (pbStarted) return;
+  pbStarted = true;
+  const frame = document.getElementById('pb-frame');
+  try {
+    const r = await fetch('/api/rag/skills');
+    const d = await r.json();
+    const pack = (d.skills || []).find(s => s.has_phrasebank);
+    if (!pack) throw new Error('not installed');
+    const url = `/api/rag/skills/${encodeURIComponent(pack.id)}/phrasebank.html`;
+    document.getElementById('pb-open').href = url;
+    frame.addEventListener('load', () => {
+      document.getElementById('pb-loading').style.display = 'none';
+      frame.style.display = '';
+      pushTheme();
+    });
+    frame.src = url;
+  } catch (e) {
+    document.getElementById('pb-loading').style.display = 'none';
+    document.getElementById('pb-missing').style.display = 'flex';
+  }
+}
+
+async function updateFromSamples() {
+  const icon = document.getElementById('pb-update-icon');
+  icon.textContent = '…';
+  await loadBank(true);
+  pbReady = false;
+  const f = document.getElementById('pb-frame');
+  if (f.src) f.contentWindow.location.reload();
+  icon.textContent = '✓';
+  setTimeout(() => { icon.textContent = '↻'; }, 1500);
+}
 
 // ── Data ──────────────────────────────────────────────────────────────
 async function loadSamples() {
@@ -170,6 +302,7 @@ async function loadSamples() {
     const r = await fetch('/api/rag/style');
     samples = await r.json();
     document.getElementById('samples-count').textContent = samples.length;
+    document.getElementById('tab-n-samples').textContent = samples.length || '';
     renderSampleList();
   } catch (e) {
     list.innerHTML = `<div class="text-xs p-3" style="color: var(--danger)">${escapeHtml(e.message)}</div>`;
@@ -212,13 +345,17 @@ function bankTotals() {
 
 function renderBankCard() {
   const t = bankTotals();
+  document.getElementById('tab-n-phrases').textContent = bank && t.sentences ? t.sentences + ' yours' : '';
+  document.getElementById('pb-subtitle').textContent = (bank?.samples || []).length
+    ? `Rhetorical moves from published prose — ${t.sentences} of your sentences, from ${bank.samples.length} samples, filed beside them.`
+    : 'Rhetorical moves from published prose. Add samples to see your own sentences beside them.';
   document.getElementById('bank-sentences').textContent = bank ? t.sentences : '—';
   document.getElementById('bank-moves').textContent = bank ? t.moves : '—';
   const over = (bank?.connectives || []).filter(c => c.status === 'over');
   const note = document.getElementById('bank-note');
   if (bank?.error) note.textContent = 'Could not read samples: ' + bank.error;
   else if (!bank?.samples?.length) note.textContent = 'Add a sample to start your phrase bank.';
-  else if (over.length) note.innerHTML = `<span style="color: var(--signal)">${over.length} connective${over.length > 1 ? 's' : ''} over the corpus budget</span> · open to see`;
+  else if (over.length) note.innerHTML = `<span style="color: var(--danger)">${over.length} connective${over.length > 1 ? 's' : ''} over the corpus budget</span> · open to see`;
   else note.textContent = `${bank.stats.words.toLocaleString()} words · mean sentence ${bank.stats.mean_sentence_words} words`;
 }
 
@@ -352,6 +489,7 @@ function showReader(title, content) {
 }
 
 function newSample() {
+  showTab('samples');
   currentSampleId = null;
   renderSampleList();
   showOnly('reader-edit-wrap');

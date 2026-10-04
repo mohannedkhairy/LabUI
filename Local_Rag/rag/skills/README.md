@@ -50,8 +50,8 @@ at a fraction of the cost. The exemplars remain in the files for humans to read.
 | Section plumbed through | `jfr/web/rag_routes.py` — `QueryBody.section`, `.write_mode`, `.draft_text` |
 | Status / preview | `GET /api/rag/skills`, `GET /api/rag/skills/brief?section=results&preview=true` |
 | Audit | `POST /api/rag/writing/audit`, `GET /api/rag/projects/{id}/files/{slug}/audit`, `GET /api/rag/projects/{id}/audit` |
-| UI | `templates/writing_workspace.html` (Draft / Revise / Audit), `templates/research_chat.html` (section picker), `templates/research_phrasebank.html` (Phrase Bank tab) |
-| Phrase Bank page | `GET /api/rag/skills/{skill}/phrasebank.html` (rendered live, your sentences merged in), embedded by `GET /research/phrasebank` |
+| UI | `templates/writing_workspace.html` (Draft / Revise / Audit), `templates/research_chat.html` (section picker), `templates/research_style.html` (Writing Style → Phrase bank tab) |
+| Phrase Bank page | `GET /api/rag/skills/{skill}/phrasebank.html` (rendered live, your sentences merged in), embedded in the Writing Style page's Phrase bank tab |
 | Your phrase bank | `skills/style_bank.py`; `GET /api/rag/style/phrasebank`, `POST …/rebuild`, `POST …/hide` |
 | Phrases panel | `GET /api/rag/skills/phrases?section=results` → writing workspace drawer → Phrases |
 
@@ -61,7 +61,8 @@ disables its buttons.
 
 ## Phrase Bank tab
 
-`/research/phrasebank` (sidebar → Research Lab → Phrase Bank) shows the pack's
+Writing Style → **Phrase bank** tab (`/research/style?tab=phrases`; the old
+`/research/phrasebank` address redirects there) shows the pack's
 rhetorical moves, reusable patterns, and attested exemplars, with search and
 per-section / per-source filters. Clicking a pattern copies it.
 

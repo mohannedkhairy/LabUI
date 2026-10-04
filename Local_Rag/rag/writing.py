@@ -240,11 +240,10 @@ def list_projects(conn: sqlite3.Connection) -> list[dict]:
                 f["layout"] = json.loads(f.get("layout_json") or "{}")
             except (TypeError, ValueError):
                 f["layout"] = {}
-        d["total_words"] = sum(
-            word_count(_file_path(d["slug"], f["slug"]).read_text(encoding="utf-8", errors="replace"))
-            if _file_path(d["slug"], f["slug"]).exists() else 0
-            for f in d["files"]
-        )
+            path = _file_path(d["slug"], f["slug"])
+            f["words"] = (word_count(path.read_text(encoding="utf-8", errors="replace"))
+                          if path.exists() else 0)
+        d["total_words"] = sum(f["words"] for f in d["files"])
         out.append(d)
     return out
 

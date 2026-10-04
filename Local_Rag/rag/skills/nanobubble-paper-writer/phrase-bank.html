@@ -17,6 +17,8 @@ body{margin:0;color:var(--ink);font:15px/1.65 var(--font-sans,'Public Sans',syst
      background-color:var(--surface);
      background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);
      background-size:26px 26px}
+.embedded header h1{display:none}
+.embedded header{padding-top:12px}
 header{position:sticky;top:0;z-index:20;background:var(--surface);border-bottom:1px solid var(--line);padding:16px 22px 10px}
 h1{margin:0 0 2px;font-family:var(--font-display,'Fraunces',Georgia,serif);font-size:23px;font-weight:600;
    font-variation-settings:'SOFT' 0,'WONK' 1,'opsz' 60;letter-spacing:-.015em}
@@ -55,7 +57,7 @@ blockquote.mine cite{color:var(--data)}
 blockquote.mine b{font-weight:600;color:var(--data)}
 .chip.src.me{border-color:var(--data);color:var(--data)}
 .chip.src.me.on{background:var(--data);border-color:var(--data);color:#fff}
-.over{color:var(--signal);font-weight:600}
+.over{color:var(--danger,#c0392b);font-weight:600}
 .opener{display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid var(--line);font-size:13px}
 .opener:last-child{border-bottom:0}
 .sec{opacity:.75}
@@ -135,6 +137,8 @@ window.addEventListener('message',e=>{
    if(!l){l=document.createElement('link');l.rel='stylesheet';l.id='labui-font';document.head.appendChild(l);}
    if(l.href!==d.fontHref)l.href=d.fontHref;}
 });
-if(window.parent!==window) window.parent.postMessage({type:'labui-phrasebank-ready'},'*');
+// Embedded in LabUI the host page already carries the title; drop ours.
+if(window.parent!==window){document.documentElement.classList.add('embedded');
+ window.parent.postMessage({type:'labui-phrasebank-ready'},'*');}
 apply();
 </script></body></html>

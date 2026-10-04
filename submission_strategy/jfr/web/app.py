@@ -967,12 +967,11 @@ def research_style_page(request: Request):
     return templates.TemplateResponse(request, "research_style.html", {})
 
 
-@app.get("/research/phrasebank", response_class=HTMLResponse)
-def research_phrasebank(request: Request):
-    """Browsable phrase bank — the installed skill pack's rhetorical moves,
-    patterns, and attested exemplars. Served from the pack itself; see
-    Local_Rag/rag/skills/build_phrasebank_html.py."""
-    return templates.TemplateResponse(request, "research_phrasebank.html", {})
+@app.get("/research/phrasebank")
+def research_phrasebank():
+    """The phrase bank now lives on the Writing Style page (it is fed by the
+    style samples); keep old links and bookmarks working."""
+    return RedirectResponse("/research/style?tab=phrases", status_code=307)
 
 
 @app.get("/research/graph", response_class=HTMLResponse)

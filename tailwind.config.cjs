@@ -27,6 +27,11 @@ module.exports = {
         brand: ramp("brand"),  // the accent ("signal")
         data: ramp("data"),    // secondary — measurements, your own text
         live: ramp("live"),    // streaming / running
+        // Older JFR templates (manuscripts, journals, submissions, recommend)
+        // still use Tailwind's gray/indigo names; alias them to the theme so
+        // those pages follow the selected palette too.
+        gray: ramp("ink"),
+        indigo: ramp("brand"),
       },
       boxShadow: {
         soft: "0 1px 0 rgba(23,21,18,0.04), 0 1px 2px rgba(23,21,18,0.04)",

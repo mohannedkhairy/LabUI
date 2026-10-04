@@ -1,111 +1,275 @@
 {% extends "base.html" %}
 {% block title %}Write{% endblock %}
-{% block heading %}Write — Manuscript Projects{% endblock %}
+{% block heading %}Write{% endblock %}
+{% block subtitle %}<span id="proj-summary">Manuscript projects — sections, citations to your library, and the writing standard in one place</span>{% endblock %}
 {% block header_actions %}
-  <button onclick="document.getElementById('new-project-form').style.display = document.getElementById('new-project-form').style.display === 'none' ? 'block' : 'none'"
-          class="bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium px-4 py-2 rounded-lg flex items-center gap-2">
+  <button onclick="openComposer()" class="toolbar-btn btn-signal">
     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-    New project
+    New manuscript
   </button>
+{% endblock %}
+
+{% block head %}
+<style>
+  /* ── Project cards ─────────────────────────────────────────────────── */
+  .proj-card { position: relative; display: flex; flex-direction: column; padding: 0; overflow: hidden;
+               transition: border-color .18s ease, transform .18s cubic-bezier(.22,1,.36,1), box-shadow .18s ease; }
+  .proj-card:hover { border-color: var(--line-firm); transform: translateY(-2px);
+                     box-shadow: 0 2px 4px rgba(0,0,0,.03), 0 14px 32px -18px rgba(0,0,0,.28); }
+  .proj-card:focus-within { border-color: var(--signal); }
+  .proj-card .cover { position: absolute; inset: 0; z-index: 1; border-radius: inherit; }
+  .proj-card .cover:focus-visible { outline: 2px solid var(--signal); outline-offset: -2px; }
+  .proj-card .above { position: relative; z-index: 2; }
+  .proj-title { font-family: var(--font-display); font-size: 17.5px; font-weight: 600; line-height: 1.32;
+                letter-spacing: -0.01em; color: var(--ink); }
+  .proj-card:hover .proj-title { color: var(--signal-ink); }
+
+  /* Distribution of words across sections — one segment per section. */
+  .sec-bar { display: flex; gap: 2px; height: 6px; border-radius: 3px; overflow: hidden; }
+  .sec-bar i { display: block; min-width: 6px; background: var(--line); }
+  .sec-bar i.has { background: color-mix(in srgb, var(--signal) 70%, var(--raised)); }
+  .sec-bar i.has:nth-child(2n) { background: color-mix(in srgb, var(--signal) 45%, var(--raised)); }
+
+  .sec-row { display: flex; align-items: baseline; gap: 8px; font-size: 12.5px; padding: 3px 0; color: var(--ink-muted); }
+  .sec-row .dots { flex: 1; border-bottom: 1px dotted var(--line-firm); transform: translateY(-3px); }
+  .sec-row .n { font-family: var(--font-mono); font-size: 11px; color: var(--ink-faint); font-variant-numeric: tabular-nums; }
+  .sec-row.empty { color: var(--ink-faint); }
+
+  .proj-foot { display: flex; align-items: center; gap: 10px; padding: 10px 18px; margin-top: auto;
+               border-top: 1px solid var(--line); background: color-mix(in srgb, var(--sunken) 60%, transparent); }
+  .icon-btn-sm { width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center;
+                 border-radius: var(--radius-sm); color: var(--ink-faint); transition: color .15s, background-color .15s; }
+  .icon-btn-sm:hover { color: var(--danger); background: var(--raised); }
+
+  /* ── Composer ──────────────────────────────────────────────────────── */
+  .tmpl { text-align: left; padding: 11px 13px; border-radius: var(--radius); border: 1px solid var(--line);
+          background: var(--raised); transition: border-color .15s, background-color .15s; }
+  .tmpl:hover { border-color: var(--line-firm); }
+  .tmpl.on { border-color: var(--signal); background: var(--signal-wash); }
+  .tmpl .secs { font-size: 11px; color: var(--ink-faint); margin-top: 3px; line-height: 1.45; }
+
+  .new-card { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+              min-height: 230px; border: 1.5px dashed var(--line-firm); border-radius: var(--radius);
+              color: var(--ink-faint); transition: border-color .15s, color .15s, background-color .15s; }
+  .new-card:hover { border-color: var(--signal); color: var(--signal); background: var(--signal-wash); }
+</style>
 {% endblock %}
 
 {% block content %}
 
-<!-- New project form -->
-<div id="new-project-form" class="mb-6 hidden block bg-white dark:bg-ink-900 rounded-xl border border-ink-200 dark:border-ink-800 shadow-soft dark:shadow-soft-dark p-5" style="display:none">
-  <div class="flex flex-wrap items-end gap-4">
-    <div class="flex-1 min-w-60">
-      <label class="block text-xs font-medium text-ink-500 dark:text-ink-400 mb-1">Manuscript title</label>
-      <input id="np-title" type="text" placeholder="e.g. Ionic strength and pH effects on nanobubble electrostatic stability"
-             class="w-full bg-ink-50 dark:bg-ink-800 border border-ink-200 dark:border-ink-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400">
+<!-- Composer -->
+<section id="composer" class="tile mb-6" hidden>
+  <div class="flex items-start justify-between gap-4 mb-4">
+    <div>
+      <div class="eyebrow mb-1">New manuscript</div>
+      <p class="text-[12.5px]" style="color: var(--ink-muted)">A project is a set of connected markdown sections with citations to your library and links between sections.</p>
     </div>
-    <button onclick="createProject()" class="bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium px-5 py-2 rounded-lg">Create &amp; open</button>
-    <button onclick="document.getElementById('new-project-form').style.display='none'" class="text-ink-500 dark:text-ink-300 text-sm px-3 py-2">Cancel</button>
+    <button onclick="closeComposer()" class="icon-btn-sm" title="Close" aria-label="Close">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+    </button>
   </div>
-  <p class="text-[11px] text-ink-400 mt-2">A project is a set of connected markdown files (abstract, introduction, methods, …) with citations to your library and cross-file links.</p>
+  <input id="np-title" type="text" autocomplete="off"
+         placeholder="Working title — e.g. Ionic strength and pH effects on nanobubble electrostatic stability"
+         class="w-full bg-transparent outline-none pb-2 mb-5 font-display text-[21px] leading-snug"
+         style="color: var(--ink); border-bottom: 1px solid var(--line-firm)">
+  <div class="eyebrow mb-2">Start from</div>
+  <div id="templates" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2.5 mb-5"></div>
+  <div class="flex items-center gap-2 flex-wrap">
+    <button onclick="createProject()" id="create-btn" class="toolbar-btn btn-signal" style="padding: 7px 14px">Create &amp; open</button>
+    <button onclick="closeComposer()" class="toolbar-btn" style="padding: 7px 14px">Cancel</button>
+    <span class="text-[11px] ml-auto" style="color: var(--ink-faint)">Sections can be added, renamed and reordered later.</span>
+  </div>
+</section>
+
+<!-- List controls -->
+<div id="list-bar" class="flex items-center gap-3 mb-4 flex-wrap" style="display: none">
+  <div class="relative flex-1 min-w-[200px] max-w-sm">
+    <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2" style="color: var(--ink-faint)" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+    <input id="proj-q" type="search" placeholder="Search manuscripts" class="field" style="padding-left: 34px" oninput="render()">
+  </div>
+  <div class="seg" role="tablist" aria-label="Sort" style="width: auto">
+    <button data-sort="recent" onclick="setSort('recent')">Recent</button>
+    <button data-sort="title"  onclick="setSort('title')">Title</button>
+    <button data-sort="words"  onclick="setSort('words')">Length</button>
+  </div>
 </div>
 
-<div id="projects-grid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-  <div class="col-span-full text-center text-ink-400 text-sm py-12">Loading…</div>
+<div id="projects-grid" class="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-4">
+  <div class="col-span-full text-center text-sm py-12" style="color: var(--ink-faint)">Loading…</div>
 </div>
 
 {% endblock %}
 
 {% block scripts %}
 <script>
+const TEMPLATES = [
+  { id: 'article', label: 'Research article', sections: ['Abstract', 'Introduction', 'Methods', 'Results', 'Discussion', 'Conclusions'] },
+  { id: 'letter',  label: 'Letter / communication', sections: ['Abstract', 'Main text', 'Methods'] },
+  { id: 'review',  label: 'Review', sections: ['Abstract', 'Introduction', 'Background', 'Current understanding', 'Open questions', 'Outlook'] },
+  { id: 'blank',   label: 'Blank', sections: ['Draft'] },
+];
+let template = 'article', projects = [], sortBy = 'recent';
+try { sortBy = localStorage.getItem('labui-write-sort') || 'recent'; } catch (e) {}
+
 function escapeHtml(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
+function ago(ts) {
+  const s = Math.max(0, Date.now() / 1000 - ts);
+  if (s < 60) return 'just now';
+  if (s < 3600) return Math.floor(s / 60) + ' min ago';
+  if (s < 86400) return Math.floor(s / 3600) + ' h ago';
+  if (s < 86400 * 7) { const d = Math.floor(s / 86400); return d === 1 ? 'yesterday' : d + ' days ago'; }
+  return new Date(ts * 1000).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+// ── Composer ──────────────────────────────────────────────────────────
+function renderTemplates() {
+  document.getElementById('templates').innerHTML = TEMPLATES.map(t => `
+    <button class="tmpl ${t.id === template ? 'on' : ''}" data-tmpl="${t.id}" type="button">
+      <div class="text-[13px] font-semibold" style="color: var(--ink)">${escapeHtml(t.label)}</div>
+      <div class="secs">${t.sections.map(escapeHtml).join(' · ')}</div>
+    </button>`).join('');
+}
+function openComposer() {
+  const c = document.getElementById('composer');
+  c.hidden = false; renderTemplates();
+  document.getElementById('np-title').focus();
+  c.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+function closeComposer() { document.getElementById('composer').hidden = true; }
+
+async function createProject() {
+  const title = document.getElementById('np-title').value.trim();
+  if (!title) { document.getElementById('np-title').focus(); return; }
+  const btn = document.getElementById('create-btn');
+  btn.disabled = true; btn.textContent = 'Creating…';
+  try {
+    const r = await fetch('/api/rag/projects', {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({title})
+    });
+    if (!r.ok) throw new Error((await r.json()).detail || ('HTTP ' + r.status));
+    const p = await r.json();
+    const t = TEMPLATES.find(x => x.id === template) || TEMPLATES[0];
+    for (const name of t.sections) {
+      await fetch(`/api/rag/projects/${p.id}/files`, {
+        method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({title: name})
+      });
+    }
+    window.location.href = '/write/' + p.id;
+  } catch (e) {
+    btn.disabled = false; btn.textContent = 'Create & open';
+    alert('Create failed: ' + e.message);
+  }
+}
+
+// ── List ──────────────────────────────────────────────────────────────
 async function loadProjects() {
   const grid = document.getElementById('projects-grid');
   try {
     const r = await fetch('/api/rag/projects');
     if (!r.ok) throw new Error('HTTP ' + r.status);
-    const projects = await r.json();
-    if (!projects.length) {
-      grid.innerHTML = `<div class="col-span-full text-center text-ink-400 text-sm py-12">
-        No manuscript projects yet. Create one and start writing — you can cite your library papers with the Cite button and link sections together.</div>`;
-      return;
-    }
-    grid.innerHTML = projects.map(p => `
-      <a href="/write/${escapeHtml(p.id)}" class="tile tile-flush p-5 flex flex-col hover:border-brand-300 dark:hover:border-brand-700 transition group">
-        <div class="flex items-start justify-between gap-2">
-          <h3 class="font-semibold text-sm text-ink-800 dark:text-ink-100 leading-snug group-hover:text-brand-700 dark:group-hover:text-brand-300">${escapeHtml(p.title)}</h3>
-          ${p.jfr_manuscript_id ? `<a href="/recommend?ms=${encodeURIComponent(p.jfr_manuscript_id)}" onclick="event.stopPropagation()" title="Open journal-fit recommendations for ${escapeHtml(p.jfr_manuscript_id)}" class="shrink-0 text-[10px] font-mono bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900 rounded-md px-2 py-0.5">JFR: ${escapeHtml(p.jfr_manuscript_id)}</a>` : `<span class="shrink-0 text-[10px] font-mono bg-ink-50 dark:bg-ink-800 text-ink-400 rounded-md px-2 py-0.5">no JFR link</span>`}
-        </div>
-        <div class="mt-3 flex items-center gap-3 text-[11px] text-ink-400">
-          <span class="flex items-center gap-1">
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-            ${p.file_count} file${p.file_count === 1 ? '' : 's'}
-          </span>
-          <span>${p.total_words.toLocaleString()} words</span>
-          <span class="ml-auto">${new Date(p.updated_at * 1000).toLocaleDateString()}</span>
-        </div>
-        <div class="mt-3 flex flex-wrap gap-1.5">
-          ${(p.files || []).slice(0, 4).map(f => `<span class="text-[10px] bg-ink-50 dark:bg-ink-800 text-ink-500 dark:text-ink-400 rounded px-1.5 py-0.5">${escapeHtml(f.title)}</span>`).join('')}
-          ${(p.files || []).length > 4 ? `<span class="text-[10px] text-ink-400 py-0.5">+${p.files.length - 4} more</span>` : ''}
-        </div>
-        <div class="mt-4 flex items-center justify-between">
-          <span class="text-[10px] font-mono text-ink-300 dark:text-ink-600">${escapeHtml(p.slug)}</span>
-          <button onclick="event.preventDefault(); event.stopPropagation(); deleteProject('${escapeHtml(p.id)}')"
-                  class="text-[11px] text-ink-400 hover:text-rose-600 dark:hover:text-rose-400">Delete</button>
-        </div>
-      </a>
-    `).join('');
+    projects = await r.json();
   } catch (e) {
-    grid.innerHTML = `<div class="col-span-full text-rose-500 text-sm py-8">Failed to load projects: ${escapeHtml(e.message)}</div>`;
+    grid.innerHTML = `<div class="col-span-full text-sm py-8" style="color: var(--danger)">Failed to load projects: ${escapeHtml(e.message)}</div>`;
+    return;
   }
+  const words = projects.reduce((n, p) => n + (p.total_words || 0), 0);
+  document.getElementById('proj-summary').textContent = projects.length
+    ? `${projects.length} manuscript${projects.length === 1 ? '' : 's'} · ${words.toLocaleString()} words written`
+    : 'Manuscript projects — sections, citations to your library, and the writing standard in one place';
+  document.getElementById('list-bar').style.display = projects.length < 4 ? 'none' : '';
+  render();
 }
 
-async function createProject() {
-  const title = document.getElementById('np-title').value.trim();
-  if (!title) { alert('Give the manuscript a title.'); return; }
-  try {
-    const r = await fetch('/api/rag/projects', {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({title})
-    });
-    if (!r.ok) throw new Error((await r.json()).detail || ('HTTP ' + r.status));
-    const p = await r.json();
-    // Start with the usual section skeleton.
-    for (const name of ['Abstract', 'Introduction', 'Methods', 'Results', 'Discussion']) {
-      await fetch(`/api/rag/projects/${p.id}/files`, {
-        method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({title: name})
-      });
-    }
-    window.location.href = '/write/' + p.id;
-  } catch (e) {
-    alert('Create failed: ' + e.message);
+function setSort(s) {
+  sortBy = s;
+  try { localStorage.setItem('labui-write-sort', s); } catch (e) {}
+  render();
+}
+
+function render() {
+  document.querySelectorAll('[data-sort]').forEach(b => b.classList.toggle('on', b.dataset.sort === sortBy));
+  const grid = document.getElementById('projects-grid');
+  if (!projects.length) {
+    grid.innerHTML = `
+      <button class="new-card col-span-full md:col-span-1" onclick="openComposer()">
+        <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" d="M12 4v16m8-8H4"/></svg>
+        <span class="text-sm font-medium">Start your first manuscript</span>
+        <span class="text-[12px] max-w-[260px] text-center" style="color: var(--ink-faint)">Pick a template, then draft each section with your library and the writing standard beside you.</span>
+      </button>`;
+    return;
   }
+  const q = (document.getElementById('proj-q').value || '').trim().toLowerCase();
+  let list = projects.filter(p => !q || (p.title + ' ' + (p.files || []).map(f => f.title).join(' ')).toLowerCase().includes(q));
+  list = list.slice().sort((a, b) =>
+    sortBy === 'title' ? a.title.localeCompare(b.title)
+    : sortBy === 'words' ? (b.total_words || 0) - (a.total_words || 0)
+    : b.updated_at - a.updated_at);
+  grid.innerHTML = list.map(card).join('') +
+    (q ? '' : `<button class="new-card" onclick="openComposer()">
+       <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" d="M12 4v16m8-8H4"/></svg>
+       <span class="text-sm font-medium">New manuscript</span></button>`);
+  if (!list.length) grid.innerHTML = `<div class="col-span-full text-sm py-10 text-center" style="color: var(--ink-faint)">No manuscript matches “${escapeHtml(q)}”.</div>`;
+}
+
+function card(p) {
+  const files = p.files || [];
+  const words = p.total_words || 0;
+  const written = files.filter(f => f.words > 0).length;
+  const bar = files.length
+    ? `<div class="sec-bar" title="Words per section">${files.map(f =>
+        `<i class="${f.words ? 'has' : ''}" style="flex-grow: ${Math.max(f.words || 0, words ? words * 0.04 : 1)}" title="${escapeHtml(f.title)} — ${(f.words || 0).toLocaleString()} words"></i>`).join('')}</div>`
+    : '';
+  const rows = files.slice(0, 5).map(f => `
+    <div class="sec-row ${f.words ? '' : 'empty'}"><span class="truncate max-w-[70%]">${escapeHtml(f.title)}</span><span class="dots"></span>
+      <span class="n">${f.words ? f.words.toLocaleString() : '—'}</span></div>`).join('');
+  const more = files.length > 5 ? `<div class="text-[11.5px] pt-1" style="color: var(--ink-faint)">+ ${files.length - 5} more section${files.length - 5 === 1 ? '' : 's'}</div>` : '';
+  const jfr = p.jfr_manuscript_id
+    ? `<a href="/recommend?ms=${encodeURIComponent(p.jfr_manuscript_id)}" class="above chip chip-success" title="Open journal-fit recommendations">Journal fit ↗</a>`
+    : `<span class="chip" title="Push to JFR from the editor's Fit panel to get journal recommendations">Draft</span>`;
+  return `
+  <article class="tile proj-card">
+    <a class="cover" href="/write/${encodeURIComponent(p.id)}" aria-label="Open ${escapeHtml(p.title)}"></a>
+    <div class="p-5 pb-4">
+      <div class="flex items-center justify-between gap-3 mb-2.5">
+        <span class="eyebrow">Edited ${escapeHtml(ago(p.updated_at))}</span>
+        <span class="font-mono text-[11px]" style="color: var(--ink-faint)">${words.toLocaleString()} words</span>
+      </div>
+      <h3 class="proj-title clamp-3" title="${escapeHtml(p.title)}">${escapeHtml(p.title)}</h3>
+      ${files.length ? `<div class="mt-4">${bar}
+        <div class="text-[11px] mt-1.5 mb-2" style="color: var(--ink-faint)">${written} of ${files.length} section${files.length === 1 ? '' : 's'} started</div>
+        ${rows}${more}</div>`
+      : `<p class="text-[12.5px] mt-4" style="color: var(--ink-faint)">No sections yet — open it to add one.</p>`}
+    </div>
+    <div class="proj-foot">
+      ${jfr}
+      <span class="font-mono text-[10.5px] truncate flex-1" style="color: var(--ink-faint)" title="${escapeHtml(p.slug)}">${escapeHtml(p.slug)}</span>
+      <button class="above icon-btn-sm" data-delete="${escapeHtml(p.id)}" title="Delete manuscript" aria-label="Delete ${escapeHtml(p.title)}">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+      </button>
+    </div>
+  </article>`;
 }
 
 async function deleteProject(id) {
-  if (!confirm('Delete this project and all its files? This cannot be undone.')) return;
+  const p = projects.find(x => x.id === id);
+  if (!confirm(`Delete “${p ? p.title : id}” and all its sections? This cannot be undone.`)) return;
   const r = await fetch('/api/rag/projects/' + encodeURIComponent(id), {method: 'DELETE'});
   if (!r.ok) { alert('Delete failed'); return; }
   loadProjects();
 }
 
+document.addEventListener('click', (e) => {
+  const d = e.target.closest('[data-delete]');
+  if (d) { e.preventDefault(); deleteProject(d.dataset.delete); return; }
+  const t = e.target.closest('[data-tmpl]');
+  if (t) { template = t.dataset.tmpl; renderTemplates(); document.getElementById('np-title').focus(); }
+});
+document.getElementById('np-title').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') createProject();
+  if (e.key === 'Escape') closeComposer();
+});
+if (new URLSearchParams(location.search).get('new')) openComposer();
 document.addEventListener('DOMContentLoaded', loadProjects);
 </script>
 {% endblock %}
