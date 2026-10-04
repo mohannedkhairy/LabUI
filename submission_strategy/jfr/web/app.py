@@ -94,6 +94,9 @@ try:
 except Exception as e:
     print(f"[rag] router import failed: {e}")
 
+from jfr.web.library_routes import router as _library_router
+app.include_router(_library_router, prefix="/api/rag", tags=["library"])
+
 # Mount writing-projects router under /api/rag/* (projects, files, citations, export)
 try:
     from jfr.web.writing_routes import router as _writing_router
@@ -1003,6 +1006,11 @@ def writing_workspace_page(request: Request, project_id: str):
 @app.get("/research/upload", response_class=HTMLResponse)
 def research_upload_page(request: Request):
     return templates.TemplateResponse(request, "research_upload.html", {})
+
+
+@app.get("/library", response_class=HTMLResponse)
+def library_page(request: Request):
+    return templates.TemplateResponse(request, "library.html", {})
 
 
 @app.get("/review", response_class=HTMLResponse)

@@ -6,6 +6,15 @@ from pathlib import Path
 DDL = """
 PRAGMA journal_mode=WAL;
 PRAGMA foreign_keys=ON;
+CREATE TABLE IF NOT EXISTS library_folder (
+ id TEXT PRIMARY KEY,
+ name TEXT NOT NULL COLLATE NOCASE UNIQUE
+);
+CREATE TABLE IF NOT EXISTS library_membership (
+ paper_id TEXT PRIMARY KEY,
+ folder_id TEXT NOT NULL REFERENCES library_folder(id) ON DELETE CASCADE
+);
+
 
 CREATE TABLE IF NOT EXISTS manuscript (
     id              TEXT PRIMARY KEY,
