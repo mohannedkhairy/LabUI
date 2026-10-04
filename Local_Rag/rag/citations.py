@@ -151,7 +151,8 @@ def sync_rag_papers(force: bool = False) -> int:
     # startup (or after ingest) still fills newly added papers.
     paper_count = len(rows)
     catalog_count = conn.execute("SELECT COUNT(*) FROM citation_catalog WHERE paper_id IS NOT NULL").fetchone()[0]
-    if not force and catalog_count >= paper_count:
+    titles_changed = conn.execute("SELECT 1 FROM papers p JOIN citation_catalog c ON p.paper_id=c.paper_id WHERE COALESCE(p.title,'')<>COALESCE(c.title,'') LIMIT 1").fetchone()
+    if not force and catalog_count >= paper_count and not titles_changed:
         conn.close()
         return 0
     existing = {r[0]: r[1] for r in conn.execute("SELECT paper_id, citation_key FROM citation_catalog WHERE paper_id IS NOT NULL")}

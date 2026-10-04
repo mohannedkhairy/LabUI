@@ -144,13 +144,17 @@ def api_review_list_papers():
         """
     ).fetchall()
     conn.close()
-    return [dict(r) for r in rows]
+    from paper_titles import title_map
+    titles = title_map()
+    return [dict(dict(r), title=titles.get(r["paper_id"]) or r["title"] or r["paper_id"]) for r in rows]
 
 
 @router.get("/review/paper/{paper_id}")
 def api_review_get(paper_id: str):
     """Full snapshot: marks, notes, and last-updated info for a paper."""
     pid = _validate_paper_id(paper_id)
+    from paper_titles import title_for
+    canonical_title = title_for(pid)
     conn = _conn()
     # Ensure the paper_review row exists (lazy create on first view)
     exists = conn.execute(
@@ -163,6 +167,8 @@ def api_review_get(paper_id: str):
             (pid, None, "2000-01-01T00:00:00Z"),
         )
         conn.commit()
+    conn.execute("UPDATE paper_review SET title=? WHERE paper_id=?", (canonical_title, pid))
+    conn.commit()
     mark_rows = conn.execute(
         "SELECT * FROM review_mark WHERE paper_id = ? ORDER BY created_at DESC", (pid,)
     ).fetchall()
@@ -449,7 +455,8 @@ def api_review_export(paper_id: str):
     info = dict(info_row) if info_row else {}
 
     lines: list[str] = []
-    title = info.get("title") or pid
+    from paper_titles import title_for
+    title = title_for(pid)
     lines.append(f"# Review: {title}")
     lines.append(f"Paper ID: {pid}")
     if info.get("opened_at"):

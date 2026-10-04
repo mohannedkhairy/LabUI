@@ -324,6 +324,9 @@ def parse_pdf(pdf_path: Path, library: dict, converter: DocumentConverter,
     # fill fields that the PDF/library parser did not already provide.
     external = match_metadata(pdf_path, title, metadata_records or [])
     if external:
+        from paper_titles import is_placeholder, usable_title
+        if is_placeholder(title, paper_id, str(pdf_path)) and usable_title(external.get("title"), paper_id, str(pdf_path)):
+            title = external["title"].strip()
         if not authors and external.get("authors"):
             authors = [a.strip() for a in str(external["authors"]).split(";") if a.strip()]
         if not year and external.get("year"):

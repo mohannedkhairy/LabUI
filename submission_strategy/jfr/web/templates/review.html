@@ -59,7 +59,8 @@
 <!-- Top toolbar -->
 <div style="display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; padding:.25rem 0 .6rem;">
     <span style="font-size:12px; color:var(--ink-muted,#6b7280)">Paper</span>
-    <input id="paperInput" style="font:inherit;font-size:13px;border:1px solid var(--ink-200,#e5e7eb);border-radius:6px;padding:.3rem .5rem;width:220px" placeholder="paper id (from library)">
+    <input id="paperInput" style="font:inherit;font-size:13px;border:1px solid var(--ink-200,#e5e7eb);border-radius:6px;padding:.3rem .5rem;width:220px" list="reviewPaperOptions" placeholder="Find a paper by title" aria-label="Find paper">
+    <datalist id="reviewPaperOptions"></datalist>
     {% if paper_id %}<input type="hidden" id="paperIdSeed" value="{{ paper_id }}">{% endif %}
     <button class="toolbar-btn active" id="loadBtn">Open</button>
     <span style="color:var(--ink-300,#d1d5db)">|</span>

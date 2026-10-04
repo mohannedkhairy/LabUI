@@ -2003,6 +2003,12 @@ def api_session_get(session_id: str):
     s = _mem.get_session(session_id)
     if not s:
         raise HTTPException(404, "not found")
+    from paper_titles import title_map
+    titles = title_map()
+    for turn in s.get("turns", []):
+        for source in turn.get("sources", []):
+            if isinstance(source, dict) and source.get("paper_id") in titles:
+                source["title"] = titles[source["paper_id"]]
     return s
 
 
@@ -2235,6 +2241,11 @@ def init_databases() -> None:
         _init_rag_schema(conn)
     finally:
         conn.close()
+    from paper_titles import reconcile_titles
+    from config import PAPERS_LIBRARY, PARSED_DIR, MENDELEY_LIBRARY
+    repaired = reconcile_titles(DB_PATH, PAPERS_LIBRARY, PARSED_DIR, MENDELEY_LIBRARY)
+    if repaired:
+        print(f"[rag] recovered {repaired} paper titles from local metadata")
     _mem.init_db()
     # Keep a searchable, stable-key citation catalog alongside the indexed
     # papers.  Sync is idempotent and preserves the original paper ids.

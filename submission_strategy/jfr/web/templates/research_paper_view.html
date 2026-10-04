@@ -73,6 +73,8 @@
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script>
 const PAPER_ID = {{ paper_id | tojson }};
+let PAPER_TITLE = PAPER_ID;
+fetch('/api/rag/paper?id='+encodeURIComponent(PAPER_ID)).then(r=>{if(!r.ok)throw Error('Paper metadata unavailable');return r.json();}).then(p=>{PAPER_TITLE=p.title||PAPER_ID;document.getElementById('page-title').textContent=PAPER_TITLE;document.title=PAPER_TITLE+' — LabUI';}).catch(()=>{});
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
 document.getElementById('rawPdf').href = '/api/rag/pdf?id=' + encodeURIComponent(PAPER_ID);
 
@@ -278,11 +280,11 @@ async function attachClip(clipId) {
 async function clipToNote(clipId) {
   const c = currentClips.find(x => x.clip_id === clipId);
   if (!c) return;
-  const title = (c.type === 'figure' ? 'Figure from ' : 'Highlight from ') + PAPER_ID + ' (p' + c.page + ')';
+  const title = (c.type === 'figure' ? 'Figure from ' : 'Highlight from ') + PAPER_TITLE + ' (p' + c.page + ')';
   const body = c.type === 'figure'
     ? `![${(c.note || 'figure').replace(/[\[\]]/g, '')}](/api/rag/clips/${c.clip_id}/image)\n\n${c.note || ''}`
     : `> ${(c.text || '').replace(/\n/g, '\n> ')}\n\n${c.note || ''}`;
-  const content = `_From paper \`${PAPER_ID}\`, page ${c.page}._\n\n${body}`;
+  const content = `_From paper **${PAPER_TITLE}**, page ${c.page}._\n\n${body}`;
   try {
     const r = await fetch('/api/rag/notes', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },

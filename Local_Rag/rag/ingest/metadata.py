@@ -141,7 +141,7 @@ def match(pdf_path: Path, extracted_title: str, records: list[dict[str, Any]]) -
     for record in records:
         score = 0.0
         path = _norm(record.get("path"))
-        if path and (stem in path or _norm(Path(str(record.get("path"))).stem) == stem):
+        if path and _norm(Path(str(record.get("path"))).stem) == stem:
             score = 1.0
         rt = _norm(record.get("title"))
         if title and rt:
