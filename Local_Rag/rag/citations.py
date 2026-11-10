@@ -2,7 +2,7 @@
 
 The RAG ``papers`` table remains the source of indexed documents.  This module
 adds a small, metadata-oriented catalog with stable human-friendly keys and
-aliases, so the editor can use ``@smith2024nanobubbles`` instead of a long
+aliases, so the editor can use ``@smith2024`` instead of a long
 opaque paper id.  Imports are parsed into reviewable proposals; no ambiguous
 record is silently merged.
 """
@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import difflib
 import json
+import logging
 import re
 import sqlite3
 import time
@@ -45,6 +46,10 @@ CREATE TABLE IF NOT EXISTS citation_catalog (
 );
 CREATE INDEX IF NOT EXISTS idx_citation_catalog_title ON citation_catalog(title);
 CREATE INDEX IF NOT EXISTS idx_citation_catalog_doi ON citation_catalog(doi);
+CREATE TABLE IF NOT EXISTS citation_settings (
+    name TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS citation_imports (
     id TEXT PRIMARY KEY,
     source TEXT NOT NULL,
@@ -106,6 +111,7 @@ def _doi(value: Any) -> str:
 
 def _author_family(authors: str) -> str:
     first = re.split(r"\s*(?:;|\band\b|\|)\s*", authors or "", maxsplit=1, flags=re.I)[0].strip()
+    first = re.sub(r"\s+et\s+al\.?$", "", first, flags=re.I).strip()
     if "," in first:
         first = first.split(",", 1)[0]
     else:
@@ -114,21 +120,84 @@ def _author_family(authors: str) -> str:
 
 
 def make_key(title: str, authors: str = "", year: Any = None, taken: set[str] | None = None) -> str:
-    """Generate a deterministic, readable citation key and avoid collisions."""
-    family = _author_family(authors)
-    y = str(year) if year else ""
-    words = [w for w in _norm(title).split() if w not in {"the", "a", "an", "of", "and", "in", "for", "on"}]
-    stem = "".join(words[:3])[:34] or "reference"
-    base = f"{family}{y}{stem}" if family else f"{y}{stem}"
-    base = re.sub(r"[^A-Za-z0-9]", "", base)[:48] or "reference"
+    """First-author surname + year; missing metadata is explicit, never guessed."""
+    family = _author_family(authors) or "anon"
+    y = str(year) if re.fullmatch(r"(?:1|2)\d{3}", str(year or "")) else "nd"
+    base = f"{family}{y}"
     if taken is None:
         return base
     candidate = base
-    suffix = 2
+    suffix = 0
     while candidate in taken:
-        candidate = f"{base}{suffix}"
+        number, letters = suffix, ""
+        while True:
+            letters = chr(97 + number % 26) + letters
+            number = number // 26 - 1
+            if number < 0:
+                break
+        candidate = base + letters
         suffix += 1
     return candidate
+
+
+KEY_POLICY = "author-year-v1"
+
+
+def _key_policy_current(conn) -> bool:
+    if not conn.execute("SELECT 1 FROM sqlite_master WHERE name='citation_settings'").fetchone():
+        return False
+    row = conn.execute("SELECT value FROM citation_settings WHERE name='key_policy'").fetchone()
+    return bool(row and row[0] == KEY_POLICY)
+
+
+def plan_author_year_keys(conn) -> list[dict[str, str]]:
+    """Read-only migration plan. Reserve old keys/aliases against other papers."""
+    rows = [dict(row) for row in conn.execute("SELECT * FROM citation_catalog ORDER BY citation_key")]
+    current = _key_policy_current(conn)
+    owners: dict[str, set[int]] = {}
+    keep = set()
+    for i, row in enumerate(rows):
+        base = make_key(row["title"], row["authors"], row["year"])
+        key = row["citation_key"]
+        if key == base or current and re.fullmatch(re.escape(base) + r"[a-z]+", key):
+            keep.add(i)
+        for token in [key, row.get("paper_id"), *_aliases(row)]:
+            if token:
+                owners.setdefault(token, set()).add(i)
+    allocated = {row["citation_key"] for i, row in enumerate(rows) if i in keep}
+    plan = []
+    for i, row in enumerate(rows):
+        if i in keep:
+            continue
+        taken = allocated | {token for token, indices in owners.items() if indices - {i}}
+        new_key = make_key(row["title"], row["authors"], row["year"], taken)
+        allocated.add(new_key)
+        if new_key != row["citation_key"]:
+            plan.append({"old_key": row["citation_key"], "new_key": new_key,
+                         "paper_id": row["paper_id"], "title": row["title"]})
+    return plan
+
+
+def _apply_author_year_keys(conn) -> list[dict[str, str]]:
+    plan = plan_author_year_keys(conn)
+    # Temporary keys avoid UNIQUE collisions during renames. All changes commit
+    # with the surrounding metadata sync; old spellings remain exact aliases.
+    pending = []
+    for change in plan:
+        row = conn.execute("SELECT aliases_json FROM citation_catalog WHERE citation_key=?",
+                           (change["old_key"],)).fetchone()
+        aliases = list(dict.fromkeys([*_aliases(row), change["old_key"]]))
+        temporary = "migration_" + uuid.uuid4().hex
+        conn.execute("UPDATE citation_catalog SET citation_key=? WHERE citation_key=?",
+                     (temporary, change["old_key"]))
+        pending.append((change, temporary, aliases))
+    for change, temporary, aliases in pending:
+        conn.execute("UPDATE citation_catalog SET citation_key=?,aliases_json=?,updated_at=? WHERE citation_key=?",
+                     (change["new_key"], json.dumps(aliases), time.time(), temporary))
+        conn.execute("UPDATE citation_import_matches SET proposed_key=? WHERE proposed_key=?",
+                     (change["new_key"], change["old_key"]))
+    conn.execute("INSERT OR REPLACE INTO citation_settings VALUES('key_policy',?)", (KEY_POLICY,))
+    return plan
 
 
 def _aliases(row: sqlite3.Row | dict[str, Any]) -> list[str]:
@@ -145,18 +214,31 @@ def sync_rag_papers(force: bool = False) -> int:
     if not DB_PATH.exists():
         return 0
     conn = _conn()
+    if not _key_policy_current(conn):
+        # First-use migration can be triggered by startup or autocomplete.
+        # Snapshot before any key/metadata updates, including on other hosts.
+        directory = DB_PATH.parent / "citation-key-backups"
+        directory.mkdir(parents=True, exist_ok=True)
+        backup = directory / ("before-author-year-" + time.strftime("%Y%m%dT%H%M%SZ", time.gmtime()) + "-" + uuid.uuid4().hex[:8] + ".sqlite")
+        with sqlite3.connect(backup) as target:
+            conn.backup(target)
+        backup.chmod(0o600)
+        logging.getLogger(__name__).info("Citation key migration backup: %s", backup)
     rows = conn.execute("SELECT paper_id, title, authors, year, doi, journal, volume, issue, pages, publisher, url, abstract FROM papers").fetchall()
     # The catalog is queried on every autocomplete keystroke. Once all indexed
     # papers have a catalog row, avoid rewriting the table; an explicit sync at
     # startup (or after ingest) still fills newly added papers.
     paper_count = len(rows)
     catalog_count = conn.execute("SELECT COUNT(*) FROM citation_catalog WHERE paper_id IS NOT NULL").fetchone()[0]
-    titles_changed = conn.execute("SELECT 1 FROM papers p JOIN citation_catalog c ON p.paper_id=c.paper_id WHERE COALESCE(p.title,'')<>COALESCE(c.title,'') LIMIT 1").fetchone()
-    if not force and catalog_count >= paper_count and not titles_changed:
+    titles_changed = conn.execute("SELECT 1 FROM papers p JOIN citation_catalog c ON p.paper_id=c.paper_id WHERE COALESCE(p.title,'')<>COALESCE(c.title,'') OR COALESCE(p.year,-1)<>COALESCE(c.year,-1) OR COALESCE(p.authors,'')<>COALESCE(c.authors,'') LIMIT 1").fetchone()
+    missing = conn.execute("SELECT 1 FROM papers p WHERE NOT EXISTS(SELECT 1 FROM citation_catalog c WHERE c.paper_id=p.paper_id) LIMIT 1").fetchone()
+    if not force and catalog_count >= paper_count and not missing and not titles_changed and _key_policy_current(conn):
         conn.close()
         return 0
     existing = {r[0]: r[1] for r in conn.execute("SELECT paper_id, citation_key FROM citation_catalog WHERE paper_id IS NOT NULL")}
     keys = {r[0] for r in conn.execute("SELECT citation_key FROM citation_catalog")}
+    for row in conn.execute("SELECT aliases_json FROM citation_catalog"):
+        keys.update(_aliases(row))
     now = time.time()
     count = 0
     for p in rows:
@@ -180,6 +262,7 @@ def sync_rag_papers(force: bool = False) -> int:
                 (key, pid, title, authors, year, doi, journal, volume, issue, pages, publisher, url, abstract, json.dumps(aliases), "rag", now, now),
             )
         count += 1
+    _apply_author_year_keys(conn)
     conn.commit()
     conn.close()
     return count
@@ -194,15 +277,21 @@ def _row_dict(row: sqlite3.Row) -> dict[str, Any]:
 
 
 def catalog_search(q: str, limit: int = 12) -> list[dict[str, Any]]:
-    q = (q or "").strip()
-    if not q or not DB_PATH.exists():
+    q = (q or "").strip().lstrip("@")
+    if not DB_PATH.exists():
         return []
     sync_rag_papers()
     conn = _conn()
-    like = f"%{q.replace('%', '').replace('_', '')}%"
+    escaped = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    like = f"%{escaped}%"
     rows = conn.execute(
-        "SELECT * FROM citation_catalog WHERE citation_key LIKE ? OR title LIKE ? OR authors LIKE ? OR doi LIKE ? OR paper_id LIKE ? OR aliases_json LIKE ? ORDER BY (year IS NULL), year DESC, title LIMIT ?",
-        (like, like, like, like, like, like, max(1, min(int(limit), 50))),
+        """SELECT * FROM citation_catalog c WHERE
+        (c.paper_id IS NULL OR EXISTS(SELECT 1 FROM papers p WHERE p.paper_id=c.paper_id)) AND
+        (citation_key LIKE ? ESCAPE '\\' OR title LIKE ? ESCAPE '\\' OR authors LIKE ? ESCAPE '\\'
+         OR doi LIKE ? ESCAPE '\\' OR paper_id LIKE ? ESCAPE '\\' OR aliases_json LIKE ? ESCAPE '\\')
+        ORDER BY CASE WHEN citation_key LIKE ? ESCAPE '\\' THEN 0 ELSE 1 END,
+                 (year IS NULL), year DESC, title, citation_key LIMIT ?""",
+        (like, like, like, like, like, like, escaped + "%", max(1, min(int(limit), 50))),
     ).fetchall()
     out = [_row_dict(r) for r in rows]
     conn.close()
@@ -217,7 +306,8 @@ def resolve_key(token: str) -> dict[str, Any] | None:
     conn = _conn()
     row = conn.execute("SELECT * FROM citation_catalog WHERE citation_key=? OR paper_id=?", (token, token)).fetchone()
     if not row:
-        row = conn.execute("SELECT * FROM citation_catalog WHERE aliases_json LIKE ? LIMIT 1", (f'%"{token}"%',)).fetchone()
+        row = conn.execute("""SELECT * FROM citation_catalog WHERE EXISTS
+            (SELECT 1 FROM json_each(citation_catalog.aliases_json) WHERE value=?) LIMIT 1""", (token,)).fetchone()
     conn.close()
     return _row_dict(row) if row else None
 
@@ -390,5 +480,6 @@ def apply_import_batch(batch_id: str, include_review: bool = False) -> dict[str,
             conn.execute("INSERT OR IGNORE INTO citation_catalog (citation_key,title,authors,year,doi,journal,url,source,external_id,aliases_json,confidence,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", (key, record.get("title", ""), record.get("authors", ""), record.get("year"), _doi(record.get("doi")), record.get("journal", ""), record.get("url", ""), "mendeley", record.get("external_key", ""), json.dumps([record.get("external_key", "")]), row["score"] or 0.0, now, now))
             added += 1
         conn.execute("UPDATE citation_import_matches SET status='applied' WHERE id=?", (row["id"],))
+    _apply_author_year_keys(conn)
     conn.commit(); conn.close()
     return {"batch_id": batch_id, "applied": updated, "added": added}

@@ -295,6 +295,11 @@ journals:
     abstract_format: flat
     scope_statement: >
       Publishes research on reservoir characterization, evaluation, simulation, management, and enhanced oil recovery techniques.
+    metadata:
+      active: false
+      successor_id: spejournal
+      status_reason: Incorporated into SPE Journal in January 2024
+      status_source: https://jpt.spe.org/spe-to-consolidate-all-peer-reviewed-papers-into-spe-journal
 
 
   - id: sdec
@@ -311,6 +316,11 @@ journals:
     abstract_format: flat
     scope_statement: >
       Features papers covering horizontal and directional drilling, drilling fluids, bit technology, sand control, perforating, cementing, well control, completions, and drilling operations.
+    metadata:
+      active: false
+      successor_id: spejournal
+      status_reason: Incorporated into SPE Journal in January 2024
+      status_source: https://jpt.spe.org/spe-to-consolidate-all-peer-reviewed-papers-into-spe-journal
 
 
   - id: jpse
@@ -327,6 +337,29 @@ journals:
     abstract_format: flat
     scope_statement: >
       Publishes research on petroleum engineering, reservoir engineering, drilling technology, production engineering, and petroleum geology.
+    metadata:
+      active: false
+      successor_id: geoenergy
+      status_reason: Continued as Geoenergy Science and Engineering
+      status_source: https://shop.elsevier.com/journals/geoenergy-science-and-engineering/2949-8910
+
+  - id: geoenergy
+    name: Geoenergy Science and Engineering
+    publisher: Elsevier
+    publisher_family: elsevier
+    issn_electronic: "2949-8910"
+    is_fully_oa: false
+    is_hybrid_oa: true
+    impact_factor: null
+    submission_url: https://www.sciencedirect.com/journal/geoenergy-science-and-engineering
+    abstract_format: flat
+    scope_statement: >
+      Covers geoenergy and sustainable hydrocarbon production, petroleum and reservoir engineering,
+      energy transition, carbon capture, utilization and storage, geothermal energy, hydrogen,
+      underground gas storage, and artificial intelligence in energy systems.
+    metadata:
+      previous_title_id: jpse
+      source_url: https://shop.elsevier.com/journals/geoenergy-science-and-engineering/2949-8910
 
 
   - id: natcom
@@ -365,8 +398,8 @@ journals:
     name: npj Clean Water
     publisher: Nature Publishing Group
     publisher_family: nature
-    issn_print: "2522-1493"
-    issn_electronic: "2522-1493"
+    issn_print: null
+    issn_electronic: "2059-7037"
     is_fully_oa: true
     is_hybrid_oa: false
     impact_factor: 8.0

@@ -1,4 +1,4 @@
-# LabUI — consolidated runtime dependencies (tested on Python 3.12, Apple Silicon).
+# LabUI — consolidated runtime dependencies (Python 3.12; Linux CPU/macOS MPS).
 # Single source of truth for the whole app (Research RAG + Journal-Fit tracker).
 #
 #   python3.12 -m venv .venv && source .venv/bin/activate
@@ -20,16 +20,17 @@ httpx>=0.28
 requests>=2.34
 
 # ── Retrieval / embeddings / rerank ──────────────────────────────────────────
-sentence-transformers>=5.5         # bge-m3 embedder + bge reranker
-transformers>=4.57
-torch>=2.12
+sentence-transformers>=5.5,<6      # tested model-loading APIs
+transformers>=4.57,<5
+torch>=2.12,<3
 sqlite-vec>=0.1.9                  # vector search SQLite extension
 rank-bm25>=0.2.2
 numpy>=2.0
 
 # ── PDF ingestion ────────────────────────────────────────────────────────────
-docling>=2.102                     # primary PDF → structured-text parser
-pymupdf>=1.24                      # fitz: fast text extraction for chat attachments
+docling>=2.102,<3                  # primary PDF → structured-text parser
+pymupdf>=1.24,<2                   # fitz API used by reading/attachments
+pillow>=10                        # equipment photos and private thumbnails
 
 # ── Generation ───────────────────────────────────────────────────────────────
 # The generator runs in Ollama (external service) — no Python package needed.
@@ -43,17 +44,14 @@ apscheduler>=3.11
 feedparser>=6                      # journal RSS corpus refresh
 pyyaml>=6
 qdrant-client>=1.18
-peft>=0.19
+peft>=0.19.1
 typer>=0.24
 rich>=14
 tqdm>=4.68
 
-# ── Optional: knowledge-graph extraction (the /research/graph features) ───────
-# Heavy (~spaCy model + GLiNER). Install only if you use the entity graph:
-#   pip install "gliner>=0.2.27" "spacy>=3.8" && python -m spacy download en_core_web_sm
-gliner>=0.2.27
-spacy>=3.8
+# ── Knowledge-graph extraction (the /research/graph features) ───────────────
+# setup.sh also installs the en_core_web_sm model used by this feature.
+gliner>=0.2.27,<0.3
+spacy>=3.8,<3.9
 
-# ── Optional: retrieval evaluation (ragas) — not needed to run the app ────────
-ragas>=0.4
-datasets
+# Offline evaluation tooling is separate: ./setup.sh --with-evaluation

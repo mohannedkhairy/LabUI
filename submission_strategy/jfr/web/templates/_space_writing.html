@@ -1,0 +1,30 @@
+<div class="space-stats">
+  <a href="/write" class="tile tile-hover"><div class="stat-label">Writing projects</div><div class="space-stat-value">{{ overview.project_count }}</div><div class="space-meta">Sections, drafts, and citations</div></a>
+  <a href="/manuscripts" class="tile tile-hover"><div class="stat-label">Manuscripts</div><div class="space-stat-value">{{ overview.manuscript_count }}</div><div class="space-meta">Preparing for publication</div></a>
+  <a href="/submissions" class="tile tile-hover"><div class="stat-label">Active submissions</div><div class="space-stat-value">{{ overview.active_count }}</div><div class="space-meta">Across the publication workflow</div></a>
+</div>
+<div class="space-columns">
+  <section class="tile tile-flush space-panel">
+    <div class="space-panel-heading"><h2>Your writing projects</h2><a href="/write">All projects →</a></div>
+    {% for project in overview.projects %}
+      <a href="{{ project.href }}" class="space-row"><div class="space-row-title">{{ project.title }}</div><div class="space-meta">{{ project.section_count }} sections · Type @ to cite your library</div></a>
+    {% else %}<div class="space-empty">Start a project to bring your sections and references together. <a href="/write">Create a writing project →</a></div>{% endfor %}
+  </section>
+  <section class="tile tile-flush space-panel">
+    <div class="space-panel-heading"><h2>Publication progress</h2><a href="/submissions">All submissions →</a></div>
+    {% for submission in overview.submissions %}
+      <a href="/submissions/{{ submission.id | urlencode }}" class="space-row"><div class="space-row-title">{{ submission.title }}</div><div class="space-meta">{{ submission.journal_name }}</div><span class="chip chip-brand">{{ submission.state_label }}</span></a>
+    {% else %}<div class="space-empty">No active submissions. <a href="/recommend">Find a journal for a manuscript →</a></div>{% endfor %}
+  </section>
+</div>
+{% if overview.manuscripts %}
+<section class="tile tile-flush space-panel">
+  <div class="space-panel-heading"><h2>Recent manuscripts</h2><a href="/manuscripts">All manuscripts →</a></div>
+  {% for manuscript in overview.manuscripts %}<a href="/manuscripts/{{ manuscript.id | urlencode }}/edit" class="space-row"><div class="space-row-title">{{ manuscript.title }}</div></a>{% endfor %}
+</section>
+{% endif %}
+<div class="space-inline-links">
+  <a href="/publications">{{ overview.published_count }} published papers →</a>
+  <a href="/research/style?tab=phrases">Phrase bank →</a>
+  <a href="/library">Find a reference in the shared library →</a>
+</div>

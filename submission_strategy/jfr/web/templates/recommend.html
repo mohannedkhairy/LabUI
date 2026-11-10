@@ -3,9 +3,9 @@
 {% block heading %}Journal Recommendations{% endblock %}
 
 {% block content %}
-<div class="flex gap-5">
+<div class="flex flex-col lg:flex-row gap-5">
   <!-- Left panel: manuscript picker -->
-  <div class="w-72 flex-shrink-0 space-y-4">
+  <div class="w-full lg:w-72 flex-shrink-0 space-y-4">
     <div class="bg-white dark:bg-ink-900 rounded-xl border border-ink-200 dark:border-ink-800 shadow-soft dark:shadow-soft-dark p-4">
       <label class="block text-sm font-medium text-ink-700 dark:text-ink-200 mb-2">Select Manuscript</label>
       <select id="ms-select" onchange="selectMs(this.value)"
@@ -68,7 +68,7 @@
   </div>
 
   <!-- Right panel: results -->
-  <div class="flex-1">
+  <div class="flex-1 min-w-0">
     <div id="results-area">
       {% if results %}
         {{ _render_results(results, selected_ms.id) }}
@@ -101,7 +101,7 @@ function runRecommend() {
     '<svg class="animate-spin h-8 w-8 mx-auto mb-3 text-brand-500" fill="none" viewBox="0 0 24 24">' +
     '<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>' +
     '<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>' +
-    '<p>Scoring journals… this takes ~10s on first run (model load).</p></div>';
+    '<p>Comparing your manuscript with journal scopes and available recent articles…</p></div>';
 
   fetch('/htmx/recommend/' + ms + '?top=' + top)
     .then(r => {

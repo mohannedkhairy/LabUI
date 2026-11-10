@@ -233,7 +233,11 @@ function openPaper(paperId) {
           '<p style="font-family:Inter,sans-serif;color:var(--ink-faint);margin:40px">Generating summary with the local model — this can take a moment…</p>';
         try {
           const sr = await fetch('/api/rag/paper/summarize?id=' + encodeURIComponent(paperId), { method: 'POST' });
-          if (sr.ok) summaryHtml = _summaryToHtml((await sr.json()).summary || '');
+          if (sr.ok) {
+            const result = await sr.json();
+            d.title = result.title || d.title;
+            summaryHtml = _summaryToHtml(result.summary || '');
+          }
           else summaryHtml = '<p class="muted">No summary could be generated for this paper (text may be too sparse or garbled, or no model is installed).</p>';
         } catch (e) {
           summaryHtml = '<p class="muted">Summary generation failed: ' + escapeHtml(e.message) + '</p>';

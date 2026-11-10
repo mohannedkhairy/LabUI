@@ -58,9 +58,9 @@ def web_search(query: str, max_results: int = 6, academic_boost: bool = True) ->
     """
     try:
         from ddgs import DDGS
-    except ImportError:
-        log.warning("ddgs not installed — web search disabled")
-        return []
+    except ImportError as exc:
+        from runtime import RuntimeDependencyError
+        raise RuntimeDependencyError("Web search requires ddgs in the app environment. Run ./setup.sh.") from exc
 
     # Build query: for academic domains, append a filter hint
     search_q = query

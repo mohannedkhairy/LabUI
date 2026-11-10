@@ -51,14 +51,14 @@ jfr view active
 
 ## Installation
 
-Requires nothing beyond this folder — the Python 3.12 environment is self-contained.
+Use Python 3.12+ and install from the repository root. Virtual environments and
+local data are not included in the repository. The shared root requirements are
+the supported dependency source for both LabUI and this editable component.
 
 ```bash
-# If uv is not on PATH yet (only needed once per shell session):
-export PATH="$HOME/.local/bin:$PATH"
-
-# Activate
-source .venv/bin/activate
+# From the repository root
+./setup.sh
+source submission_strategy/.venv/bin/activate
 
 # Verify
 jfr --version      # prints 0.1.0

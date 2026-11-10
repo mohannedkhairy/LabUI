@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Nanobubble scout{% endblock %}
+{% block heading %}Nanobubble scout{% endblock %}
+{% block subtitle %}Weekly discoveries across journal articles and preprints{% endblock %}
+{% block header_actions %}<a href="{{ workspace.home }}" class="toolbar-btn">Research overview</a>{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="/static/scout.css">
+<div id="scout-panel" data-scout-panel data-full="true">{% include "_scout_widget.html" %}</div>
+<div class="scout-layout">
+  <aside class="tile scout-history">
+    <h3 class="font-display scout-title">Report history</h3>
+    <a href="/research/scout" class="scout-history-link {% if not selected %}scout-selected{% endif %}">Current seven-day window · {{ scout.total }}</a>
+    {% for report in reports %}
+      <a href="/research/scout?run_id={{ report.id }}" class="scout-history-link {% if selected and selected.id == report.id %}scout-selected{% endif %}">
+        <time datetime="{{ report.started_at }}">{{ report.started_at[:16].replace('T', ' ') }} UTC</time>
+        <span>{{ report.new_count }} new · {{ report.status }}</span>
+      </a>
+    {% else %}<p class="scout-meta">Your reports will appear here after the first scan starts.</p>{% endfor %}
+  </aside>
+  <section class="scout-results">
+    <h2 class="font-display scout-title">{% if selected %}Report from {{ selected.started_at[:10] }}{% else %}Published {{ scout.window_start }} – {{ scout.window_end }}{% endif %} <span class="scout-meta">({{ papers.total }})</span></h2>
+    {% if selected %}
+    <div class="tile scout-report-details">
+      <p>{{ selected.new_count }} newly found publication{{ '' if selected.new_count == 1 else 's' }} · {{ selected.status }}.</p>
+      {% if selected.window_start %}<p class="scout-meta">Strict publication window: {{ selected.window_start }} through {{ selected.window_end }} UTC. Exact publication dates required.</p>
+      {% else %}<p class="scout-meta">Historical report created before the strict seven-day filter.</p>{% endif %}
+      {% if selected.status != 'done' %}<p class="scout-error">This report has incomplete coverage. See the source results below.</p>{% endif %}
+      {% if selected.error %}<p class="scout-error">{{ selected.error }}</p>{% endif %}
+      {% for name, source in selected.sources.items() %}
+        <p class="scout-meta"><strong>{{ name }}</strong>: {{ source.status }} · {{ source.checked }} records checked · {{ source.added }} new.
+          {% if selected.window_start %}Published {{ source.since }} through {{ source.through }}; {{ source.rejected_dates }} records rejected by the date filter.
+          {% else %}Historical search window: {{ source.since }} through {{ source.through }}.{% endif %}</p>
+        {% if source.error %}<p class="scout-error">{{ source.error }}</p>{% endif %}
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% for paper in papers['items'] %}
+      <article class="tile scout-paper">
+        <div class="scout-sources"><span class="chip {% if paper.kind == 'preprint' %}chip-warn{% else %}chip-brand{% endif %}">{{ paper.kind.replace('-', ' ') }}</span>
+          <span class="scout-meta">Published {{ paper.published or 'date unavailable' }} · Found {{ paper.first_seen[:10] }}</span></div>
+        <h3 class="font-display scout-paper-title">{% if paper.url %}<a href="{{ paper.url }}" target="_blank" rel="noopener noreferrer">{{ paper.title }} ↗</a>{% else %}{{ paper.title }}{% endif %}</h3>
+        {% if paper.authors %}<p class="scout-meta">{{ paper.authors | join(', ') }}</p>{% endif %}
+        {% if paper.journal %}<p class="scout-meta">{{ paper.journal }}</p>{% endif %}
+        {% if paper.abstract %}
+          <details class="scout-abstract"><summary>Source abstract</summary><p>{{ paper.abstract }}</p></details>
+        {% else %}<p class="scout-meta">No abstract supplied by the sources.</p>{% endif %}
+        <div class="scout-sources">
+          {% for name, source in paper.sources.items() %}
+            {% if source.url %}<a class="chip" href="{{ source.url }}" target="_blank" rel="noopener noreferrer">{{ name }} ↗</a>{% else %}<span class="chip">{{ name }}</span>{% endif %}
+          {% endfor %}
+          {% if paper.doi %}<span class="scout-meta">DOI: {{ paper.doi }}</span>{% endif %}
+        </div>
+      </article>
+    {% else %}
+      <div class="tile"><p>{% if scout.running %}The scan is running. Discoveries will appear as sources finish.{% elif selected %}No new publications were added in this report.{% else %}No matching publications with exact dates in this seven-day window. The scout runs automatically.{% endif %}</p></div>
+    {% endfor %}
+    <nav class="scout-pagination" aria-label="Publication pages">
+      {% if papers.offset > 0 %}<a class="toolbar-btn" href="?offset={{ [0, papers.offset - papers.limit] | max }}{% if run_id %}&amp;run_id={{ run_id }}{% endif %}">← Previous</a>{% endif %}
+      {% if papers.offset + papers.limit < papers.total %}<a class="toolbar-btn" href="?offset={{ papers.offset + papers.limit }}{% if run_id %}&amp;run_id={{ run_id }}{% endif %}">Next →</a>{% endif %}
+    </nav>
+  </section>
+</div>
+{% endblock %}
+{% block scripts %}<script src="/static/scout.js" defer></script>{% endblock %}

@@ -1,0 +1,32 @@
+{% set timeline_values = timeline_values|default({}) %}
+<section class="pub-card pub-history" id="timeline">
+  <div class="pub-kicker">Timeline</div>
+  <h3>Event history</h3>
+  <details class="pub-editor pub-date-editor" {% if timeline_error %}open{% endif %}>
+    <summary>Edit timeline dates</summary>
+    <form method="post" action="/submissions/{{ sub.id }}/timeline/dates" class="pub-form">
+      <p class="pub-muted" id="timeline-date-help">Enter the date each event happened. Leave unknown dates blank. Dates must follow the timeline order; events can share a day.</p>
+      {% if timeline_error %}<div class="pub-notice pub-error" role="alert">{{ timeline_error }}</div>{% endif %}
+      {% for event in workflow.timeline %}
+      <div>
+        <label for="event-date-{{ event.id }}">{{ event.label }}{% if event.round %} · Round {{ event.round }}{% endif %}</label>
+        <input id="event-date-{{ event.id }}" type="date" name="event_date_{{ event.id }}"
+               value="{{ timeline_values.get(event.id, event.occurred_on) or '' }}"
+               aria-describedby="timeline-date-help" {% if event.to_state == 'published' %}required{% endif %}>
+        {% if event.notes %}<p class="pub-muted" style="font-size:11px;margin-top:5px">{{ event.notes }}</p>{% endif %}
+      </div>
+      {% endfor %}
+      <div class="pub-actions"><button class="pub-button primary" type="submit">Save timeline dates</button><a class="pub-button" href="/submissions/{{ sub.id }}#timeline">Cancel</a></div>
+    </form>
+  </details>
+  <ol class="pub-timeline" style="margin-top:18px">
+    {% for event in workflow.timeline %}
+    <li>
+      <strong>{{ event.label }}{% if event.round %} · Round {{ event.round }}{% endif %}</strong>
+      {% if event.occurred_on %}<time datetime="{{ event.occurred_on }}">{{ event.occurred_on }}</time>
+      {% else %}<span class="pub-date-unknown">Event date not set · Logged {{ event.transitioned_at[:10] }}</span>{% endif %}
+      {% if event.notes %}<p>{{ event.notes }}</p>{% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+</section>

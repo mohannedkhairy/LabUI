@@ -1,0 +1,69 @@
+{% extends 'base.html' %}
+{% import '_equipment_forms.html' as forms with context %}
+{% block title %}{{ equipment.name }}{% endblock %}
+{% block heading %}{{ equipment.name }}{% endblock %}
+{% block subtitle %}{{ [equipment.manufacturer,equipment.model,equipment.location] | select | join(' · ') or 'Equipment record' }}{% endblock %}
+{% block head %}<link rel="stylesheet" href="/static/equipment.css">{% endblock %}
+{% block header_actions %}<a href="/equipment" class="toolbar-btn">Inventory</a><a href="/equipment/{{ equipment.id }}/edit" class="toolbar-btn">Edit equipment</a>{% endblock %}
+{% block content %}
+<div class="eq-detail-meta"><span class="chip {% if equipment.status=='out_of_service' %}chip-danger{% elif equipment.status=='maintenance' %}chip-warn{% else %}chip-brand{% endif %}">{{ equipment_statuses[equipment.status] }}</span>{% if equipment.asset_tag %}<span>Asset {{ equipment.asset_tag }}</span>{% endif %}{% if equipment.serial_number %}<span>Serial {{ equipment.serial_number }}</span>{% endif %}</div>
+<nav class="eq-tabs" aria-label="Equipment sections">{% for key,label in tabs.items() %}<a href="?tab={{ key }}" {% if tab==key %}aria-current="page"{% endif %}>{{ label }}{% if key=='maintenance' %}<small>{{ equipment.maintenance|length }}</small>{% elif key=='interaction' %}<small>{{ equipment.interactions|length }}</small>{% elif key=='files' %}<small>{{ equipment.files|length }}</small>{% endif %}</a>{% endfor %}</nav>
+{% if error %}<p class="eq-error" role="alert">{{ error }}</p>{% endif %}
+{% if tab=='overview' %}
+<div class="eq-columns">
+  <section class="tile eq-panel"><h2 class="font-display">About this equipment</h2>
+    {% set photos=equipment.files|selectattr('kind','equalto','photo')|list %}{% if photos %}<a href="/equipment/{{ equipment.id }}/files/{{ photos[0].id }}" target="_blank" rel="noopener noreferrer"><img class="eq-hero-photo" src="/equipment/{{ equipment.id }}/files/{{ photos[0].id }}?thumbnail=true" alt="{{ photos[0].caption or equipment.name }}"></a>{% endif %}
+    <p class="eq-prose">{{ equipment.description or 'Add a description, capabilities, and relevant specifications using Edit equipment.' }}</p>
+    <dl class="eq-facts">{% for key,label in [('category','Category'),('manufacturer','Manufacturer'),('model','Model'),('location','Location'),('owner','Responsible person')] %}<div><dt>{{ label }}</dt><dd>{{ equipment[key] or 'Not recorded' }}</dd></div>{% endfor %}</dl>
+    {% if equipment.notes %}<h3>Equipment notes</h3><p class="eq-prose">{{ equipment.notes }}</p>{% endif %}
+  </section>
+  <div class="eq-stack">
+    <section class="tile eq-panel"><h2 class="font-display">Important dates</h2>
+      <dl class="eq-facts">{% for event in equipment.dates %}<div><dt>{{ event.title }}</dt><dd><time datetime="{{ event.date }}">{{ event.date }}</time>{% if event.notes %}<p class="eq-meta">{{ event.notes }}</p>{% endif %}</dd></div>{% else %}<p class="eq-meta">No dates recorded yet.</p>{% endfor %}</dl>
+      <details class="eq-add" {% if failed_kind=='milestone' %}open{% endif %}><summary>Add an important date</summary>{{ forms.record_form('milestone',failed_record if failed_kind=='milestone' else {}) }}</details>
+      {% for event in equipment.milestones %}<details class="eq-add"><summary>Edit {{ event.title }}</summary>{{ forms.record_form('milestone',event) }}</details>{% endfor %}
+    </section>
+    <section class="tile eq-panel"><h2 class="font-display">Vendor and support</h2><dl class="eq-facts">{% for key,label in [('vendor_name','Company'),('vendor_contact','Contact'),('vendor_email','Email'),('vendor_phone','Phone')] %}{% if equipment[key] %}<div><dt>{{ label }}</dt><dd>{{ equipment[key] }}</dd></div>{% endif %}{% endfor %}</dl>
+      {% if equipment.vendor_url %}<a href="{{ equipment.vendor_url }}" target="_blank" rel="noopener noreferrer" class="eq-link">Vendor website ↗</a>{% endif %}
+      <a href="?tab=interaction" class="eq-link">View vendor interaction history →</a>
+    </section>
+  </div>
+</div>
+{% elif tab=='maintenance' %}
+<section class="tile eq-panel"><div class="eq-section-heading"><h2 class="font-display">Maintenance and calibration</h2></div><p class="eq-meta">Plan service, record completed work, and keep the next due date with its history.</p>
+  <details class="eq-add" {% if failed_kind=='maintenance' %}open{% endif %}><summary>Add maintenance record</summary>{{ forms.record_form('maintenance',failed_record if failed_kind=='maintenance' else {}) }}</details>
+  <div class="eq-history">{% for record in equipment.maintenance %}<article>
+    <div class="eq-row"><h3>{{ record.title }}</h3><span class="chip {% if record.status=='completed' %}chip-success{% elif record.status=='in_progress' %}chip-warn{% endif %}">{{ maintenance_statuses[record.status] }}</span></div>
+    <p class="eq-meta">{{ maintenance_kinds[record.kind] }} · Scheduled {{ record.scheduled_for }}{% if record.completed_on %} · Completed {{ record.completed_on }}{% endif %}</p>
+    {% if record.performed_by %}<p class="eq-meta">Performed by {{ record.performed_by }}</p>{% endif %}{% if record.next_due_on %}<p class="eq-due">Next due {{ record.next_due_on }}</p>{% endif %}
+    {% if record.notes %}<p class="eq-prose">{{ record.notes }}</p>{% endif %}
+    <details class="eq-add"><summary>Edit record</summary>{{ forms.record_form('maintenance',record) }}</details>
+    {% for file in equipment.files if file.maintenance_id==record.id %}<a class="eq-link" href="/equipment/{{ equipment.id }}/files/{{ file.id }}">{{ file.caption or file.original_name }} ↗</a>{% endfor %}
+  </article>{% else %}<p class="eq-empty">No maintenance history yet.</p>{% endfor %}</div>
+</section>
+{% elif tab=='interaction' %}
+<section class="tile eq-panel"><h2 class="font-display">Vendor interactions</h2><p class="eq-meta">A dated log of emails, calls, visits, quotes, and support tickets.</p>
+  <details class="eq-add" {% if failed_kind=='interaction' %}open{% endif %}><summary>Log a vendor interaction</summary>{{ forms.record_form('interaction',failed_record if failed_kind=='interaction' else {}) }}</details>
+  <div class="eq-history">{% for record in equipment.interactions %}<article><div class="eq-row"><h3>{{ record.subject }}</h3><span class="chip {% if record.status=='closed' %}chip-success{% else %}chip-brand{% endif %}">{{ record.status }}</span></div>
+    <p class="eq-meta">{{ record.occurred_on }} · {{ contact_channels[record.channel] }}{% if record.contact %} · {{ record.contact }}{% endif %}</p>
+    {% if record.reference %}<p class="eq-meta">Reference: {{ record.reference }}</p>{% endif %}{% if record.follow_up_on %}<p class="eq-due">Follow up {{ record.follow_up_on }}</p>{% endif %}
+    {% if record.notes %}<p class="eq-prose">{{ record.notes }}</p>{% endif %}
+    <details class="eq-add"><summary>Edit interaction / follow-up</summary>{{ forms.record_form('interaction',record) }}</details>
+    {% for file in equipment.files if file.interaction_id==record.id %}<a class="eq-link" href="/equipment/{{ equipment.id }}/files/{{ file.id }}">{{ file.caption or file.original_name }} ↗</a>{% endfor %}
+  </article>{% else %}<p class="eq-empty">No vendor interactions recorded yet.</p>{% endfor %}</div>
+</section>
+{% else %}
+<section class="tile eq-panel"><h2 class="font-display">Photos and documents</h2>
+  <form action="/equipment/{{ equipment.id }}/files" method="post" enctype="multipart/form-data" class="eq-form eq-upload"><div class="eq-fields">
+    <label><span>Photo or PDF *</span><input type="file" name="file" accept="image/jpeg,image/png,image/webp,image/gif,application/pdf" required><small>Photos up to 10 MB; PDF documents up to 20 MB.</small></label>
+    <label><span>Caption / document title</span><input type="text" name="caption" maxlength="2000"></label>
+    <label><span>Related record</span><select name="related"><option value="">General equipment file</option>{% for record in equipment.maintenance %}<option value="maintenance:{{ record.id }}">Maintenance: {{ record.title }}</option>{% endfor %}{% for record in equipment.interactions %}<option value="interaction:{{ record.id }}">Vendor: {{ record.subject }}</option>{% endfor %}</select></label>
+  </div><button class="toolbar-btn btn-signal" type="submit">Upload file</button></form>
+  <div class="eq-gallery">{% for file in equipment.files %}<article class="eq-file">
+    <a href="/equipment/{{ equipment.id }}/files/{{ file.id }}" target="_blank" rel="noopener noreferrer">{% if file.kind=='photo' %}<img src="/equipment/{{ equipment.id }}/files/{{ file.id }}?thumbnail=true" alt="{{ file.caption or file.original_name }}" loading="lazy">{% else %}<div class="eq-pdf">PDF</div>{% endif %}<strong>{{ file.caption or file.original_name }}</strong></a>
+    <p class="eq-meta">{{ file.original_name }} · {{ (file.byte_size/1024)|round(0)|int }} KB</p>{% if file.related_title %}<p class="eq-meta">{{ file.related_title }}</p>{% endif %}
+    <form method="post" action="/equipment/{{ equipment.id }}/files/{{ file.id }}/remove"><button class="toolbar-btn" type="submit">Remove attachment</button></form>
+  </article>{% else %}<p class="eq-empty">Add photos, manuals, quotations, or service reports.</p>{% endfor %}</div>
+</section>
+{% endif %}
+{% endblock %}

@@ -625,6 +625,7 @@ def _catalog_row(token: str) -> Optional[dict]:
         return {
             "paper_id": rec.get("paper_id") or rec.get("citation_key"),
             "citation_key": rec.get("citation_key"),
+            "aliases": rec.get("aliases", []),
             "title": rec.get("title"), "authors": rec.get("authors"),
             "year": rec.get("year"), "doi": rec.get("doi"),
             "journal": rec.get("journal"), "volume": rec.get("volume"),
@@ -658,7 +659,7 @@ def project_citations(conn: sqlite3.Connection, project_id: str) -> list[dict]:
         if "citation_key" not in row:
             cat = _catalog_row(pid)
             if cat:
-                row = {**row, "citation_key": cat.get("citation_key")}
+                row = {**row, "citation_key": cat.get("citation_key"), "aliases": cat.get("aliases", [])}
         out.append({"n": n, **row})
     return out
 
@@ -759,6 +760,9 @@ def render_export_md(conn: sqlite3.Connection, project_id: str) -> str:
         numbered[c["paper_id"]] = c["n"]
         if c.get("citation_key"):
             numbered[c["citation_key"]] = c["n"]
+        for alias in c.get("aliases", []):
+            if re.fullmatch(r"[A-Za-z0-9_\-]+", alias):
+                numbered[alias] = c["n"]
     titles: dict[str, str] = {}
 
     parts = [f"# {p['title']}", ""]

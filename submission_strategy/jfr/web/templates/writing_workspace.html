@@ -8,6 +8,12 @@
         redeclaring them here would fight the theme. ──────────────────────── */
 
   .ref-list { padding-left: 1.4em; font-size: 0.85em; color: var(--ink-muted); }
+  body .CodeMirror-hints { z-index: 5000; max-width: min(560px, calc(100vw - 16px));
+    background: var(--surface); color: var(--ink); border: 1px solid var(--line); font-family: var(--font-sans); }
+  body .CodeMirror-hint { white-space: normal; padding: 8px 12px; line-height: 1.4; }
+  body .CodeMirror-hint strong { display: block; font-family: var(--font-mono); color: var(--signal); }
+  body .CodeMirror-hint small { display: block; color: var(--ink-faint); margin-top: 3px; }
+  li.CodeMirror-hint-active { background: var(--sunken); color: var(--ink); }
   .ref-doi  { color: var(--signal); text-decoration: none; font-size: 0.9em; }
 
   /* ── Frame ──────────────────────────────────────────────────────────────
@@ -468,6 +474,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/selection/active-line.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/show-hint.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/show-hint.min.js"></script>
+<script src="/static/writing_citations.js?v=1"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.6/dist/purify.min.js"></script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
 <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
@@ -615,8 +622,7 @@ async function loadProject() {
   renderFilesPane();
   const cr = await fetch(`/api/rag/projects/${encodeURIComponent(PROJECT_ID)}/citations`);
   const cd = await cr.json();
-  citeMap = {};
-  (cd.citations || []).forEach(c => { citeMap[c.paper_id] = c; if (c.citation_key) citeMap[c.citation_key] = c; });
+  citeMap = LabUICitations.index(cd.citations);
   const files = project.files || [];
   const keep = currentFile && files.some(f => f.slug === currentFile) ? currentFile : files[0] && files[0].slug;
   if (keep) await selectFile(keep);
@@ -743,7 +749,7 @@ function initEditor() {
     lineNumbers: false,       // prose, not code — the gutter only narrows the measure
     lineWrapping: true,
     styleActiveLine: { nonEmpty: true },
-    placeholder: 'Write markdown… Use Cite to insert @paper citations, and Link for [[cross-references]].',
+    placeholder: 'Write markdown… Type @ to find a paper, or @cai to search by author. Use [[section]] for links.',
     extraKeys: {
       'Cmd-S': () => saveCurrent(),
       'Ctrl-S': () => saveCurrent(),
@@ -763,26 +769,9 @@ function initEditor() {
     autosaveTimer = setTimeout(() => saveCurrent(true), 2500);
     setStatus('Unsaved changes…');
   });
-  cm.on('inputRead', (editor, change) => {
-    if (!change || !change.text || !change.text.join('').match(/[A-Za-z0-9_\-@]/)) return;
-    const cur = editor.getCursor();
-    const line = editor.getLine(cur.line).slice(0, cur.ch);
-    const m = line.match(/(^|[^\w.\-])@([A-Za-z0-9_\-]*)$/);
-    if (!m || m[2].length < 2 || !window.CodeMirror.showHint) return;
-    const query = m[2];
-    fetch('/api/rag/citations/autocomplete?q=' + encodeURIComponent(query) + '&limit=12')
-      .then(r => r.ok ? r.json() : {citations: []})
-      .then(d => {
-        const items = (d.citations || []).map(p => ({
-          text: '@' + (p.citation_key || p.key || p.paper_id),
-          displayText: (p.citation_key || p.key || p.paper_id) + ' — ' + (p.title || 'Untitled'),
-        }));
-        if (!items.length || editor.getCursor().line !== cur.line) return;
-        // Replace the complete trigger, including the leading @, so selecting
-        // a result never produces ``@@key``.
-        const from = CodeMirror.Pos(cur.line, cur.ch - query.length - 1);
-        editor.showHint(() => ({list: items, from, to: cur}), {completeSingle: false, closeOnUnfocus: true});
-      }).catch(() => {});
+  LabUICitations.attachAutocomplete(cm, {
+    onPick: () => saveCurrent(true),
+    onUnavailable: () => setStatus('Citation suggestions unavailable. Use Cite to search.'),
   });
   applyEditorTheme();
   watchTheme();
@@ -899,22 +888,32 @@ async function saveCurrent(silent) {
   if (!currentFile || saving) return !dirty;
   if (!dirty && !silent) { setStatus('Saved'); return true; }
   saving = true;
+  const content = cm.getValue();
   setStatus('Saving…');
   try {
     const r = await fetch(`/api/rag/projects/${encodeURIComponent(PROJECT_ID)}/files/${encodeURIComponent(currentFile)}`, {
       method: 'PUT', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({content: cm.getValue()})
+      body: JSON.stringify({content})
     });
     if (!r.ok) throw new Error((await r.json()).detail || 'HTTP ' + r.status);
     fileData = await r.json();
-    dirty = false;
+    dirty = cm.getValue() !== content;
     setStatus('Saved ' + new Date().toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}));
+    try { await refreshCitations(); }
+    catch (error) { setStatus('Saved; citation preview could not refresh.'); }
     updateLinksPanel();
+    updatePreview();
     return true;
   } catch (e) {
     setStatus('Save failed: ' + e.message);
     return false;
-  } finally { saving = false; }
+  } finally {
+    saving = false;
+    if (dirty) {
+      clearTimeout(autosaveTimer);
+      autosaveTimer = setTimeout(() => saveCurrent(true), 2500);
+    }
+  }
 }
 
 function setStatus(t) {
@@ -926,19 +925,14 @@ function setStatus(t) {
 
 // ── Preview (markdown + citations + wikilinks + references) ─────────────────
 function renderCitations(text) {
-  // Replace @paper-id tokens with [n] chips using the project-wide numbering.
-  let out = text;
-  const rendered = new Set();
-  for (const [pid, c] of Object.entries(citeMap)) {
-    const token = c.citation_key || pid;
-    if (rendered.has(String(c.n) + ':' + token)) continue;
-    rendered.add(String(c.n) + ':' + token);
-    const title = escapeHtml(c.title || token).replace(/"/g, '&quot;');
-    const chip = `<span class="cite-chip" data-paper-id="${escapeHtml(c.paper_id || pid)}" title="[${c.n}] ${title}">[${c.n}]</span>`;
-    out = out.split('@' + token).join(chip);
-    if (c.paper_id && c.paper_id !== token) out = out.split('@' + c.paper_id).join(chip);
-  }
-  return out;
+  return LabUICitations.render(text, citeMap, escapeHtml);
+}
+
+async function refreshCitations() {
+  const response = await fetch(`/api/rag/projects/${encodeURIComponent(PROJECT_ID)}/citations`);
+  if (!response.ok) throw new Error('Could not refresh citations');
+  const data = await response.json();
+  citeMap = LabUICitations.index(data.citations);
 }
 
 function renderWikilinks(text) {
@@ -993,7 +987,7 @@ function updatePreview(force) {
     html = enhanceFigures(html);
     if (window.DOMPurify) html = DOMPurify.sanitize(html, {USE_PROFILES: {html: true}});
   } catch (e) { html = `<pre>${escapeHtml(src)}</pre>`; }
-  const refs = Object.values(citeMap).sort((a, b) => a.n - b.n).map(c =>
+  const refs = LabUICitations.unique(citeMap).map(c =>
     `<li>[${c.n}] ${escapeHtml(c.title || c.paper_id)}${c.authors ? ' — ' + escapeHtml(c.authors) : ''}${c.year ? ', ' + c.year : ''}. ` +
     (c.doi ? `<a class="ref-doi" href="https://doi.org/${encodeURIComponent(c.doi)}" target="_blank">doi:${escapeHtml(c.doi)}</a>` : '') + '</li>'
   ).join('');
@@ -1093,12 +1087,8 @@ function insertAtCursor(text) {
 function insertCite(pid) {
   insertAtCursor('@' + pid);
   closePicker();
-  // Refresh numbering (server computes the project-wide citation order).
-  fetch(`/api/rag/projects/${encodeURIComponent(PROJECT_ID)}/citations`)
-    .then(x => x.json()).then(d => {
-      citeMap = {}; (d.citations || []).forEach(c => { citeMap[c.paper_id] = c; if (c.citation_key) citeMap[c.citation_key] = c; });
-      updatePreview(); updateLinksPanel();
-    }).catch(() => {});
+  // Save the inserted token before asking for project-wide citation numbering.
+  saveCurrent(true);
 }
 
 function insertLink(slug) {

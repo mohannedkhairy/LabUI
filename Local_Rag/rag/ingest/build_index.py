@@ -95,6 +95,8 @@ def _init_db(conn: sqlite3.Connection) -> None:
     conn.executescript(DDL)
     # sqlite-vec virtual table — must be loaded first
     conn.executescript(VEC_DDL)
+    from retrieval.index_identity import ensure_compatible
+    ensure_compatible(conn)
     # Idempotent migration: add columns the app's queries expect (search/query
     # SELECT p.doi). Older indexes built before these columns existed get them
     # here so a re-index isn't required.
@@ -139,7 +141,7 @@ def _insert_paper(conn: sqlite3.Connection, parsed: dict) -> None:
         # title on subsequent re-indexes instead of restoring a filename/header
         # variant from the cached parsed JSON.
         "title=CASE WHEN papers.title_original IS NOT NULL AND papers.title_original<>'' THEN papers.title ELSE excluded.title END, authors=CASE WHEN excluded.authors<>'' THEN excluded.authors ELSE papers.authors END, "
-        "year=COALESCE(excluded.year,papers.year), source_pdf=excluded.source_pdf, "
+        "year=COALESCE(papers.year,excluded.year), source_pdf=excluded.source_pdf, "
         "doi=COALESCE(NULLIF(excluded.doi,''),papers.doi), journal=COALESCE(NULLIF(excluded.journal,''),papers.journal), "
         "volume=COALESCE(NULLIF(excluded.volume,''),papers.volume), issue=COALESCE(NULLIF(excluded.issue,''),papers.issue), pages=COALESCE(NULLIF(excluded.pages,''),papers.pages), publisher=COALESCE(NULLIF(excluded.publisher,''),papers.publisher), "
         "url=COALESCE(NULLIF(excluded.url,''),papers.url), abstract=COALESCE(NULLIF(excluded.abstract,''),papers.abstract)",
@@ -210,6 +212,16 @@ def run(limit: int | None = None) -> None:
             parsed = json.load(f)
 
         paper_id = parsed["paper_id"]
+        # Cached parses may predate title/byline recovery. Repair metadata
+        # before embedding so title-aware retrieval uses the printed paper name.
+        from paper_titles import is_placeholder, verified_pdf_title
+        if is_placeholder(parsed.get('title'), paper_id, parsed.get('source_pdf', '')):
+            recovered_title = verified_pdf_title(parsed.get('source_pdf'))
+            if recovered_title:
+                parsed['title'] = recovered_title
+        if not parsed.get('authors'):
+            from ingest.metadata import verified_pdf_authors
+            parsed['authors'] = verified_pdf_authors(parsed.get('source_pdf'), parsed.get('title', ''))
 
         # Content-level dedup guard: never index two papers with identical body
         # text (the recurring "same paper, different filename" problem).
@@ -267,6 +279,18 @@ def run(limit: int | None = None) -> None:
              total_papers, total_chunks, skipped_dupes)
     conn.close()
     graph_conn.close()
+    from ingest.metadata import reconcile_authors
+    recovered = reconcile_authors(DB_PATH)
+    if recovered:
+        log.info('Recovered author bylines for %d papers', recovered)
+    # Topic mapping uses the committed library and requires no GPU. An active
+    # findings job can defer this derived index refresh without failing import.
+    try:
+        from retrieval.knowledge import build_index as refresh_research_map
+        mapped = refresh_research_map()
+        log.info('Research map: %d updated, %d unchanged papers', mapped['changed'], mapped['unchanged'])
+    except Exception as exc:
+        log.warning('Research map refresh deferred: %s', exc)
     try:
         from citations import sync_rag_papers
         sync_rag_papers(force=True)

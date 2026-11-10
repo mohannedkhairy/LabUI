@@ -43,6 +43,8 @@ def strip_think(text: str) -> str:
     out = _THINK_BLOCK_RE.sub("", text or "")
     if "</think>" in out and "<think>" not in out:
         out = out.split("</think>", 1)[1]
+    if '<think>' in out.lower():
+        return ''  # An interrupted reasoning block is not a paper summary.
     return out.strip()
 
 
@@ -83,6 +85,17 @@ def ensure_summary_col(conn: sqlite3.Connection) -> None:
     if "summary" not in have:
         conn.execute("ALTER TABLE papers ADD COLUMN summary TEXT")
         conn.commit()
+    conn.execute("""CREATE TABLE IF NOT EXISTS paper_summary_attempts (
+        paper_id TEXT PRIMARY KEY, status TEXT NOT NULL, error TEXT NOT NULL DEFAULT '',
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)""")
+    conn.commit()
+
+
+def _record_attempt(conn, paper_id, status, error=''):
+    conn.execute("""INSERT INTO paper_summary_attempts(paper_id,status,error) VALUES(?,?,?)
+        ON CONFLICT(paper_id) DO UPDATE SET status=excluded.status,error=excluded.error,
+        updated_at=CURRENT_TIMESTAMP""", (paper_id, status, error))
+    conn.commit()
 
 
 def gather_paper_text(conn: sqlite3.Connection, paper_id: str, max_chars: int = 8000) -> str:
@@ -92,8 +105,6 @@ def gather_paper_text(conn: sqlite3.Connection, paper_id: str, max_chars: int = 
         "SELECT section_name, text FROM chunks WHERE paper_id = ? ORDER BY position",
         (paper_id,),
     ).fetchall()
-    if not rows:
-        return ""
 
     def priority(name: str) -> int:
         n = (name or "").strip().lower()
@@ -115,13 +126,32 @@ def gather_paper_text(conn: sqlite3.Connection, paper_id: str, max_chars: int = 
         total += len(block)
         if total >= max_chars:
             break
-    return "\n\n".join(out)
+    text = "\n\n".join(out)
+    if len(text.strip()) < 200:
+        # Table-heavy supplements can have very few indexable body chunks.
+        # Use their actual PDF text for summaries, keeping the index unchanged.
+        row = conn.execute('SELECT source_pdf FROM papers WHERE paper_id=?', (paper_id,)).fetchone()
+        if row and row[0]:
+            try:
+                import pymupdf
+                with pymupdf.open(row[0]) as document:
+                    pages = []
+                    for page in document:
+                        pages.append(page.get_text())
+                        if sum(map(len, pages)) >= max_chars:
+                            break
+                    fallback = '\n\n'.join(pages)[:max_chars]
+                if len(fallback.strip()) > len(text.strip()):
+                    text = fallback
+            except (OSError, RuntimeError, ValueError):
+                pass
+    return text
 
 
 def summarize_with_llm(title: str, text: str, model: str, base_url: str = OLLAMA_BASE_URL) -> str:
     system = (
         "You are a scientific editor writing a concise, self-contained summary of a "
-        "research paper for a busy researcher deciding whether to read it. "
+        "research paper or supporting document for a busy researcher deciding whether to read it. "
         "Write 150-220 words of flowing prose in one or two paragraphs covering: the "
         "problem and motivation, the approach or methods, the key findings or results, "
         "and why the work matters. "
@@ -138,12 +168,15 @@ def summarize_with_llm(title: str, text: str, model: str, base_url: str = OLLAMA
             {"role": "user", "content": user},
         ],
         "stream": False,
-        "options": {"temperature": 0.3, "top_p": 0.9, "num_ctx": 8192},
+        "options": {"temperature": 0.3, "top_p": 0.9, "num_ctx": 8192, "num_predict": 768},
     }
     apply_thinking_off(payload, model)
     r = requests.post(f"{base_url}/api/chat", json=payload, timeout=300)
     r.raise_for_status()
-    return strip_think(r.json().get("message", {}).get("content") or "")
+    result = r.json()
+    if result.get('error'):
+        raise RuntimeError(str(result['error']))
+    return strip_think(result.get("message", {}).get("content") or "")
 
 
 def summarize_paper(
@@ -156,26 +189,33 @@ def summarize_paper(
     """Return a cached summary, generating and caching one if absent. Returns ""
     when there's too little usable text or no model was supplied."""
     ensure_summary_col(conn)
+    from paper_titles import recover_paper_title
+    title = recover_paper_title(conn, paper_id)
+    if title is None:
+        return ""
     if not force:
         row = conn.execute("SELECT summary FROM papers WHERE paper_id = ?", (paper_id,)).fetchone()
         if row and row[0]:
             return row[0]
 
-    trow = conn.execute("SELECT title FROM papers WHERE paper_id = ?", (paper_id,)).fetchone()
-    if not trow:
-        return ""
-    title = trow[0] or paper_id
-
     text = gather_paper_text(conn, paper_id)
     if len(text) < 200:
+        _record_attempt(conn, paper_id, 'skipped', 'Too little readable text in the index or PDF')
         return ""
     if not model:
+        _record_attempt(conn, paper_id, 'failed', 'No chat model is available')
         return ""
 
-    summary = summarize_with_llm(title, text, model, base_url)
-    if not summary or summary.strip() == "INSUFFICIENT_TEXT":
+    try:
+        summary = summarize_with_llm(title, text, model, base_url)
+    except Exception as exc:
+        _record_attempt(conn, paper_id, 'failed', str(exc))
+        raise
+    if not summary or summary.strip().rstrip('.') == "INSUFFICIENT_TEXT":
+        _record_attempt(conn, paper_id, 'skipped', 'The model could not summarize the extracted text')
         return ""
 
     conn.execute("UPDATE papers SET summary = ? WHERE paper_id = ?", (summary, paper_id))
     conn.commit()
+    _record_attempt(conn, paper_id, 'generated')
     return summary

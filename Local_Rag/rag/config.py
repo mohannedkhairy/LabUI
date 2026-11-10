@@ -20,8 +20,9 @@ RAG_ROOT = Path(__file__).parent.resolve()
 # ── Source data (override dirs via env for a relocated/containerized install) ─
 LOCAL_RAG_ROOT   = RAG_ROOT.parent
 PAPERS_PDF_DIR   = _env_path("RAG_PAPERS_DIR", LOCAL_RAG_ROOT / "papers")
-SUMMARIES_DIR    = LOCAL_RAG_ROOT / "output" / "individual"
-PAPERS_LIBRARY   = LOCAL_RAG_ROOT / "output" / "papers_library.json"
+OUTPUT_DIR       = _env_path("RAG_OUTPUT_DIR", LOCAL_RAG_ROOT / "output")
+SUMMARIES_DIR    = OUTPUT_DIR / "individual"
+PAPERS_LIBRARY   = OUTPUT_DIR / "papers_library.json"
 # Optional personal reference library used during PDF indexing.  This is an
 # input-only path: BibTeX/RIS/CSL-JSON exports and common Mendeley SQLite
 # databases are read without modifying the source file.
@@ -55,12 +56,19 @@ GEN_MODEL_ALIAS  = (GEN_MODEL.split(":")[0] if GEN_MODEL else "")
 EMBED_MODEL_BASE = os.environ.get("RAG_EMBED_MODEL", "BAAI/bge-m3")
 EMBED_ADAPTER    = ""        # unused with bge-m3; kept for import compatibility
 EMBED_DIM        = int(os.environ.get("RAG_EMBED_DIM", "1024"))
+EMBED_PROVIDER   = os.environ.get('RAG_EMBED_PROVIDER', 'local')
+EMBED_BASE_URL   = os.environ.get('RAG_EMBED_BASE_URL', os.environ.get('LM_STUDIO_URL', 'http://localhost:1234/v1'))
+EMBED_QUERY_INSTRUCTION = os.environ.get('RAG_EMBED_QUERY_INSTRUCTION', 'Given a scientific research question, retrieve relevant passages and research findings that answer it.')
+EMBED_REVISION   = os.environ.get('RAG_EMBED_REVISION', '')
 
 # Reranker — sentence-transformers, runs on the detected device (MPS/CUDA/CPU).
 RERANKER_MODEL   = os.environ.get("RAG_RERANKER_MODEL", "BAAI/bge-reranker-v2-m3")
+RERANK_PROVIDER  = os.environ.get('RAG_RERANK_PROVIDER', 'local')
+RERANK_BASE_URL  = os.environ.get('RAG_RERANK_BASE_URL', os.environ.get('LM_STUDIO_URL', 'http://localhost:1234/v1'))
 
 # ── Ollama ────────────────────────────────────────────────────────────────────
 OLLAMA_BASE_URL  = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+GEN_PROVIDER     = "Ollama" if os.environ.get("LABUI_LLM_BACKEND") == "ollama" else "LM Studio"
 
 # ── Server ───────────────────────────────────────────────────────────────────
 PORT             = int(os.environ.get("RAG_PORT", "5002"))

@@ -5,26 +5,37 @@
 <div class="space-y-3">
   <div class="text-sm text-gray-500 mb-1">
     {{ passed | length }} venues pass policy · {{ failed | length }} filtered out
+    <p class="text-xs mt-1">Relative manuscript fit using the evidence shown for each journal.</p>
   </div>
+  {% if passed | selectattr('evidence_basis', 'equalto', 'scope') | list %}
+  <p class="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3">Some journals use scope comparisons while their recent-article corpus is unavailable. <a href="/journals" class="underline">View or refresh journal articles</a>.</p>
+  {% endif %}
 
   {% for r in passed %}
   {% set pct = ((r.score / max_score) * 100) | round | int %}
   <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden"
        x-data="{ open: false }">
     <!-- Header row -->
-    <div class="flex items-center px-5 py-4 cursor-pointer hover:bg-gray-50 gap-4"
+    <div class="flex items-center px-4 py-4 cursor-pointer hover:bg-gray-50 gap-3"
          @click="open = !open">
       <!-- Rank badge -->
       <div class="w-8 h-8 rounded-full bg-indigo-600 text-white text-sm font-bold flex items-center justify-center flex-shrink-0">
-        {{ r.rank }}
+        {{ r.rank if r.rank else '—' }}
       </div>
 
       <!-- Journal name + score bar -->
       <div class="flex-1 min-w-0">
-        <div class="flex items-baseline gap-3">
+        <div class="flex flex-wrap items-baseline gap-2">
           <span class="font-semibold text-gray-800">{{ r.journal_name }}</span>
           <span class="text-sm text-gray-500 font-mono">{{ "%.3f" | format(r.score) }}</span>
         </div>
+        <p class="text-xs text-gray-500 mt-1">
+          {% if r.evidence_basis == 'semantic_articles' %}Recent articles · semantic and text comparison
+          {% elif r.evidence_basis == 'article_text' %}Recent articles · text comparison
+          {% elif r.evidence_basis == 'scope' %}Journal scope only
+          {% else %}Insufficient evidence to rank{% endif %}
+          {% if r.corpus_articles %} · {{ r.corpus_articles }} articles{% endif %}
+        </p>
         <div class="mt-1.5 h-1.5 bg-gray-100 rounded-full overflow-hidden">
           <div class="h-full bg-indigo-500 rounded-full score-bar" style="width: {{ pct }}%"></div>
         </div>
@@ -32,7 +43,7 @@
 
       <!-- Score breakdown chips -->
       <div class="hidden md:flex gap-2 text-xs flex-shrink-0">
-        <span class="bg-blue-50 text-blue-700 px-2 py-0.5 rounded" title="Dense abstract score">
+          <span class="bg-blue-50 text-blue-700 px-2 py-0.5 rounded" title="Semantic abstract similarity">
           A: {{ "%.2f" | format(r.decomposition.dense_abstract) }}
         </span>
         <span class="bg-purple-50 text-purple-700 px-2 py-0.5 rounded" title="Lexical technique score">

@@ -189,12 +189,18 @@ def search_entities_fts(query: str, limit: int = 20) -> list[dict]:
     safe = re.sub(r'["\(\)\*\:\^]', " ", query).strip()
     results = []
     if safe:
+        stopwords = {'what','which','how','does','do','the','a','an','is','are','of','in','on','to','for','and','with','can'}
+        terms = list(dict.fromkeys(word for word in re.findall(r'\w+', safe.casefold()) if word not in stopwords))[:20]
+        if not terms:
+            conn.close()
+            return []
+        expression = ' OR '.join('"' + term + '"' for term in terms)
         try:
             rows = conn.execute(
                 "SELECT e.entity_id, e.name, e.type, e.description, e.paper_ids, e.chunk_count"
                 " FROM entities_fts f JOIN entities e ON e.entity_id = f.entity_id"
-                " WHERE entities_fts MATCH ? LIMIT ?",
-                (f'"{safe}"', limit),
+                " WHERE entities_fts MATCH ? ORDER BY bm25(entities_fts) LIMIT ?",
+                (expression, limit),
             ).fetchall()
             results = [dict(r) for r in rows]
         except Exception:
@@ -223,7 +229,8 @@ def expand_entity_neighbors(entity_ids: list[str], hops: int = 1) -> list[dict]:
         placeholders = ",".join("?" * len(frontier))
         rows = conn.execute(
             f"SELECT DISTINCT source_id, target_id FROM relations"
-            f" WHERE source_id IN ({placeholders}) OR target_id IN ({placeholders})",
+            f" WHERE source_id IN ({placeholders}) OR target_id IN ({placeholders})"
+            " ORDER BY weight DESC LIMIT 400",
             list(frontier) * 2,
         ).fetchall()
         new = set()

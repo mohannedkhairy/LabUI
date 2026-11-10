@@ -1037,6 +1037,7 @@ function toast(msg) {
   if (/^\d{4}-\d{2}$/.test(p.get('month') || '')) state.anchor = p.get('month') + '-01';
   if (/^\d{4}-\d{2}-\d{2}$/.test(p.get('week') || '')) state.anchor = p.get('week');
   if (p.get('kind') === 'experiment' || p.get('kind') === 'task') state.kinds = new Set([p.get('kind')]);
+  else if (p.get('kind') === 'all') state.kinds = new Set(['experiment', 'task']);
   if (p.get('ms')) { state.ms = p.get('ms'); document.getElementById('f-ms').value = state.ms; }
   await load();
   const open = p.get('open');

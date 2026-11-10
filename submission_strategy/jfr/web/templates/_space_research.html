@@ -1,0 +1,28 @@
+<div class="space-stats">
+  <a href="/library" class="tile tile-hover"><div class="stat-label">Library papers</div><div class="space-stat-value">{{ overview.paper_count }}</div><div class="space-meta">Shared with your writing projects</div></a>
+  <a href="/research/chat" class="tile tile-hover"><div class="stat-label">Conversations</div><div class="space-stat-value">{{ overview.session_count }}</div><div class="space-meta">Chat and agent sessions</div></a>
+  <a href="/research/memory" class="tile tile-hover"><div class="stat-label">Research memories</div><div class="space-stat-value">{{ overview.memory_count }}</div><div class="space-meta">Findings to build on</div></a>
+</div>
+<section class="tile space-panel">
+  <div class="space-focus"><div><h2>Work with your research agents</h2><p class="space-meta">Choose a mode, then ask a question across your papers.</p></div><a href="/research/chat#agent-select" class="toolbar-btn">All agents →</a></div>
+  <div class="space-agent-links" style="margin-top:16px">
+    {% for agent in overview.agents %}<a href="{{ agent.href }}"><strong>{{ agent.name }}</strong><div class="space-meta">{{ agent.description }}</div></a>{% endfor %}
+  </div>
+</section>
+<section id="scout-panel" data-scout-panel aria-label="Nanobubble publication scout">
+  <div class="tile"><a href="/research/scout">Nanobubble scout →</a><p class="space-meta">Loading weekly publication discoveries…</p></div>
+</section>
+<div class="space-columns">
+  <section class="tile tile-flush space-panel">
+    <div class="space-panel-heading"><h2>Recent conversations</h2><a href="/research/chat">All conversations →</a></div>
+    {% for session in overview.sessions %}
+      <a href="{{ session.href }}" class="space-row"><div class="space-row-title">{{ session.title or 'Untitled conversation' }}</div><div class="space-meta">{{ session.agent_id }} · {{ session.turn_count }} turns</div></a>
+    {% else %}<div class="space-empty"><a href="/research/chat">Start a conversation with your library →</a></div>{% endfor %}
+  </section>
+  <section class="tile tile-flush space-panel">
+    <div class="space-panel-heading"><h2>Research memory</h2><a href="/research/memory">All memories →</a></div>
+    {% for finding in overview.findings %}
+      <div class="space-row"><span class="chip">{{ finding.memory_type }}</span><p class="space-row-title clamp-3" style="margin-top:8px">{{ finding.content }}</p></div>
+    {% else %}<div class="space-empty">Findings saved from your research conversations will appear here.</div>{% endfor %}
+  </section>
+</div>

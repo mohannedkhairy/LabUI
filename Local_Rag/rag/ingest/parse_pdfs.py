@@ -11,14 +11,16 @@ routed to references_raw instead of being indexed as retrievable chunks.
 import argparse
 import json
 import logging
+import os
 import re
 import sys
 from pathlib import Path
 
 try:
     from docling.document_converter import DocumentConverter
-except ImportError:
-    print("Error: docling is not installed. Please run: pip install docling")
+except ImportError as exc:
+    print(f"Error: PDF parser could not import Docling ({type(exc).__name__}: {exc}). "
+          f"Run ./setup.sh from the LabUI directory. Interpreter: {sys.executable}", file=sys.stderr)
     sys.exit(1)
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -55,7 +57,8 @@ _GLYPH_TOKEN_RE = re.compile(r"/(?:uni[0-9A-Fa-f]{4}|[A-Za-z]{1,4}\d{1,4})")
 
 def _is_sus_char(ch: str) -> bool:
     o = ord(ch)
-    return any(lo <= o <= hi for lo, hi in _SUS_RANGES)
+    return (ch == '\ufffd' or (o < 32 and ch not in '\n\r\t')
+            or any(lo <= o <= hi for lo, hi in _SUS_RANGES))
 
 
 def garbage_ratio(text: str) -> float:
@@ -280,6 +283,9 @@ def parse_pdf(pdf_path: Path, library: dict, converter: DocumentConverter,
         return None
 
     doc_title, body_sections, refs_raw = _extract_with_fallback(doc)
+    if not body_sections:
+        log.error("No readable content extracted from %s", pdf_path.name)
+        return None
 
     # Broken font encoding → glyph soup. Re-parse this PDF with forced full-page
     # OCR and keep whichever extraction is cleaner.
@@ -298,10 +304,16 @@ def parse_pdf(pdf_path: Path, library: dict, converter: DocumentConverter,
                     refs_raw = o_refs or refs_raw
                     log.info("OCR recovered readable text for %s", pdf_path.name)
 
-    # --- Title: prefer Docling's detected title, then library, then filename ---
+    # Publisher PDFs often expose the paper title as a section header rather
+    # than a Docling `title` item. Verify embedded metadata against page 1.
+    from paper_titles import verified_pdf_title
+    pdf_title = verified_pdf_title(pdf_path)
+    # --- Title: verified PDF metadata, Docling title, library, then filename ---
     lib_entry = library.get(stem, {})
     lib_title = lib_entry.get("title")
-    if doc_title and not _is_junk_title(doc_title):
+    if pdf_title:
+        title = pdf_title
+    elif doc_title and not _is_junk_title(doc_title):
         title = doc_title.strip()
     elif lib_title and not _is_junk_title(lib_title):
         title = lib_title.strip()
@@ -332,12 +344,52 @@ def parse_pdf(pdf_path: Path, library: dict, converter: DocumentConverter,
         if not year and external.get("year"):
             year = external["year"]
 
+    # PDFs commonly contain a full visible byline but only the first author in
+    # their metadata. Recover the byline when no reference-library authors exist.
+    if not authors:
+        from ingest.metadata import verified_pdf_authors
+        authors = verified_pdf_authors(pdf_path, title)
+
+    from paper_titles import parsed_header, is_placeholder
+    ocr_header = parsed_header({'sections': body_sections})
+    if ocr_header:
+        if is_placeholder(title, paper_id, str(pdf_path)):
+            title = ocr_header['title']
+        if not authors:
+            authors = ocr_header['authors']
+
+    # DOI records are useful for older publisher layouts. Send only public
+    # DOI strings, and require the returned title and author order to match
+    # the visible PDF header before accepting any labels.
+    doi_info = {}
+    from paper_years import pdf_text, text_year
+    date_text = pdf_text(pdf_path, {'sections': body_sections}) if not year else ''
+    printed_year = text_year(date_text, strong_only=True) if not year else None
+    if printed_year:
+        year = printed_year['year']
+    if (not year or not authors or is_placeholder(title, paper_id, str(pdf_path))) and os.environ.get('RAG_METADATA_DOI', '1').lower() not in {'0', 'false', 'no'}:
+        from ingest.doi_metadata import pdf_dois, recover_doi_metadata
+        from ingest.header_metadata import pdf_headers
+        dois = pdf_dois(pdf_path)
+        if dois:
+            doi_info = recover_doi_metadata(dois, pdf_headers(pdf_path), PARSED_DIR.parent / 'doi_metadata') or {}
+            if doi_info:
+                if is_placeholder(title, paper_id, str(pdf_path)):
+                    title = doi_info['title']
+                if not authors:
+                    authors = doi_info['authors']
+                if not year:
+                    year = doi_info.get('year')
+    if not year:
+        publication = text_year(date_text)
+        year = publication['year'] if publication else None
+
     return {
         "paper_id": paper_id,
         "title": title,
         "authors": authors,
         "year": year,
-        "doi": (external or {}).get("doi") or lib_entry.get("doi"),
+        "doi": (external or {}).get("doi") or lib_entry.get("doi") or doi_info.get('doi'),
         "journal": (external or {}).get("journal") or lib_entry.get("journal"),
         "volume": (external or {}).get("volume") or lib_entry.get("volume"),
         "issue": (external or {}).get("issue") or lib_entry.get("issue") or lib_entry.get("number"),
@@ -366,7 +418,7 @@ def run(limit: int | None = None, force: bool = False) -> None:
 
     # Case-insensitive match (.pdf/.PDF) — glob('*.pdf') would miss `Foo.PDF`.
     pdfs = sorted(
-        p for p in PAPERS_PDF_DIR.iterdir()
+        p for p in PAPERS_PDF_DIR.rglob("*")
         if p.is_file() and p.suffix.lower() == ".pdf" and not p.name.startswith("._")
     )
     if limit:
@@ -392,6 +444,7 @@ def run(limit: int | None = None, force: bool = False) -> None:
     log.info("Done. %d parsed, %d skipped.", ok, len(skipped))
     if skipped:
         log.warning("Skipped PDFs: %s", ", ".join(skipped))
+        raise RuntimeError(f"Could not parse {len(skipped)} PDF(s): {', '.join(skipped)}. See parser errors above.")
 
 
 if __name__ == "__main__":

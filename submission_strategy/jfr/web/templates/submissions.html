@@ -1,101 +1,45 @@
 {% extends "base.html" %}
 {% block title %}Submissions{% endblock %}
-{% block heading %}Submission Tracker{% endblock %}
-
+{% block heading %}Submission workspace{% endblock %}
+{% block subtitle %}Follow each manuscript from the first draft to the published paper{% endblock %}
+{% block header_actions %}<a href="/publications" class="toolbar-btn">Published papers · {{ published_count }}</a>{% endblock %}
+{% block head %}<link rel="stylesheet" href="/static/submissions.css">{% endblock %}
 {% block content %}
-<!-- Active -->
-<div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-6">
-  <div class="px-6 py-4 border-b border-gray-100">
-    <h2 class="font-semibold text-gray-700">Active Submissions</h2>
-  </div>
-  {% if active %}
-  <table class="w-full text-sm">
-    <thead class="bg-gray-50 text-gray-500 text-xs uppercase tracking-wide">
-      <tr>
-        <th class="px-6 py-3 text-left">Manuscript</th>
-        <th class="px-6 py-3 text-left">Journal</th>
-        <th class="px-6 py-3 text-left">State</th>
-        <th class="px-6 py-3 text-left">Submitted</th>
-        <th class="px-6 py-3 text-right">Days elapsed</th>
-        <th class="px-6 py-3"></th>
-      </tr>
-    </thead>
-    <tbody class="divide-y divide-gray-100">
-      {% for s in active %}
-      <tr class="hover:bg-gray-50">
-        <td class="px-6 py-3 text-gray-800 font-medium">{{ s.manuscript_title[:45] }}</td>
-        <td class="px-6 py-3 text-gray-600">{{ s.journal_name }}</td>
-        <td class="px-6 py-3">
-          <span class="state-badge px-2 py-0.5 rounded-full font-semibold uppercase
-            {% if 'under_review' in s.current_state %}bg-blue-100 text-blue-700
-            {% elif 'revision' in s.current_state %}bg-amber-100 text-amber-700
-            {% elif 'drafting' in s.current_state or 'internal' in s.current_state %}bg-gray-100 text-gray-600
-            {% elif 'supervisor' in s.current_state %}bg-yellow-100 text-yellow-700
-            {% else %}bg-gray-100 text-gray-600{% endif %}">
-            {{ s.current_state.replace('_',' ') }}
-          </span>
-        </td>
-        <td class="px-6 py-3 text-gray-500">{{ s.submitted_at[:10] if s.submitted_at else '—' }}</td>
-        <td class="px-6 py-3 text-right {% if s.days_elapsed > 60 %}text-red-600 font-semibold{% elif s.days_elapsed > 30 %}text-amber-600{% else %}text-gray-500{% endif %}">
-          {{ s.days_elapsed }}d
-          {% if s.days_elapsed > 75 %}<span class="text-red-400 text-xs ml-1">⚠</span>{% endif %}
-        </td>
-        <td class="px-6 py-3 text-right">
-          <a href="/submissions/{{ s.id }}" class="text-indigo-600 hover:underline text-xs">Manage →</a>
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  {% else %}
-  <div class="px-6 py-10 text-center text-gray-400">No active submissions.</div>
-  {% endif %}
-</div>
-
-<!-- All submissions (recent) -->
-<div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-  <div class="px-6 py-4 border-b border-gray-100">
-    <h2 class="font-semibold text-gray-700">All Submissions</h2>
-  </div>
-  {% if all_subs %}
-  <table class="w-full text-sm">
-    <thead class="bg-gray-50 text-gray-500 text-xs uppercase tracking-wide">
-      <tr>
-        <th class="px-6 py-3 text-left">ID</th>
-        <th class="px-6 py-3 text-left">Manuscript</th>
-        <th class="px-6 py-3 text-left">Journal</th>
-        <th class="px-6 py-3 text-left">Outcome</th>
-        <th class="px-6 py-3 text-right">Created</th>
-        <th class="px-6 py-3"></th>
-      </tr>
-    </thead>
-    <tbody class="divide-y divide-gray-100">
-      {% for s in all_subs %}
-      <tr class="hover:bg-gray-50">
-        <td class="px-6 py-3 font-mono text-xs text-gray-400">{{ s.id }}</td>
-        <td class="px-6 py-3 text-gray-700">{{ s.manuscript_title[:40] if s.manuscript_title else s.manuscript_id }}</td>
-        <td class="px-6 py-3 text-gray-600">{{ s.journal_name if s.journal_name else s.journal_id }}</td>
-        <td class="px-6 py-3">
-          <span class="state-badge px-2 py-0.5 rounded-full font-semibold uppercase
-            {% if s.current_state == 'accepted' %}bg-green-100 text-green-700
-            {% elif 'rejected' in s.current_state %}bg-red-100 text-red-700
-            {% elif s.current_state == 'withdrawn' %}bg-gray-100 text-gray-500
-            {% elif 'review' in s.current_state %}bg-blue-100 text-blue-700
-            {% elif 'revision' in s.current_state %}bg-amber-100 text-amber-700
-            {% else %}bg-gray-100 text-gray-600{% endif %}">
-            {{ s.current_state.replace('_',' ') }}
-          </span>
-        </td>
-        <td class="px-6 py-3 text-right text-gray-400">{{ s.created_at[:10] }}</td>
-        <td class="px-6 py-3 text-right">
-          <a href="/submissions/{{ s.id }}" class="text-indigo-600 hover:underline text-xs">View →</a>
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  {% else %}
-  <div class="px-6 py-10 text-center text-gray-400">No submissions yet.</div>
-  {% endif %}
+<div class="pub-stack">
+  <section class="pub-card">
+    <div class="pub-kicker">The publication journey</div>
+    <h2>One manuscript, a clear next step</h2>
+    <p class="pub-muted" style="margin-top:8px">Draft → Internal review → Supervisor approval → Submission → Peer review ↔ Revisions → Acceptance → Proofs → Publication</p>
+    <p class="pub-muted" style="margin-top:8px">Each attempt keeps its own dated timeline. Review rounds can repeat, proofs are optional, and a rejected or withdrawn attempt stays in your history.</p>
+  </section>
+  <section class="pub-card">
+    <h3>Start a journal attempt</h3>
+    {% if manuscripts and journals %}
+    <form method="post" action="/submissions/create" class="pub-form pub-create">
+      <div><label for="start-manuscript">Manuscript</label><select id="start-manuscript" name="manuscript_id" required><option value="">Choose a manuscript</option>{% for m in manuscripts %}<option value="{{ m.id }}" {% if m.id == selected_ms %}selected{% endif %}>{{ m.title }}</option>{% endfor %}</select></div>
+      <div><label for="start-journal">Target journal</label><select id="start-journal" name="journal_id" required><option value="">Choose a journal</option>{% for j in journals %}<option value="{{ j.id }}">{{ j.name }}</option>{% endfor %}</select></div>
+      <div><label for="start-stage">Starting stage</label><select id="start-stage" name="initial_state" required>{% for state, label in state_labels.items() %}{% if state != 'published' %}<option value="{{ state }}">{{ label }}</option>{% endif %}{% endfor %}</select></div>
+      <div><label for="start-date">Date this stage began</label><input id="start-date" type="date" name="occurred_on" value="{{ today }}" required></div>
+      <button class="pub-button primary" type="submit">Start timeline</button>
+    </form>
+    <p class="pub-muted" style="margin-top:10px">For older work, choose its known stage and actual date. To add an already published paper, start at Accepted, then record its publication. Keep one active journal attempt per manuscript.</p>
+    {% else %}<p class="pub-muted">{% if manuscript_count and journals %}Your manuscripts already have an active timeline or are published. Open a timeline below, or add a new manuscript.{% else %}Add a manuscript and a target journal to start its publication timeline.{% endif %}</p><div class="pub-actions" style="margin-top:12px"><a class="pub-button primary" href="/manuscripts/new">Add manuscript</a><a class="pub-button" href="/journals">Choose journals</a></div>{% endif %}
+  </section>
+  <div class="pub-row"><h2 class="pub-title">Active manuscripts · {{ active|length }}</h2>{% if selected_ms %}<a class="pub-link" href="/submissions">Show all manuscripts</a>{% endif %}</div>
+  {% if active %}<div class="pub-attempts">
+    {% for s in active %}<article class="pub-card">
+      <div class="pub-row"><div class="pub-kicker">{{ s.journal_name }}</div><span class="pub-badge current">{{ s.workflow.label }}</span></div>
+      <h3 class="pub-title" style="margin:8px 0">{{ s.manuscript_title }}</h3>
+      <div class="pub-step-list" aria-label="{{ s.workflow.label }} in the publication journey">{% for stage in s.workflow.stages %}<span class="{{ 'recorded' if stage.recorded else '' }}" title="{{ stage.label }} — {{ stage.status }}"></span>{% endfor %}</div>
+      <p class="pub-muted">{{ s.workflow.hint }}</p>
+      <div class="pub-row" style="margin-top:16px"><span class="pub-muted">{{ s.workflow.days_in_stage }}d {{ 'in this stage' if s.workflow.stage_date_known else 'since recorded' }}{% if s.current_state in ['under_review','revision_requested_minor','revision_requested_major','revising','resubmitted'] %} · Round {{ s.workflow.round }}{% endif %}</span><a class="pub-button primary" href="/submissions/{{ s.id }}">Open timeline →</a></div>
+    </article>{% endfor %}
+  </div>{% else %}<div class="pub-card pub-empty">No active journal attempts{% if selected_ms %} for this manuscript{% endif %}.<br>Start a timeline above to follow the manuscript through review and publication.</div>{% endif %}
+  <section class="pub-card">
+    <h3>All journal attempts</h3>
+    {% if all_subs %}<div class="pub-table-wrap"><table class="pub-table"><thead><tr><th>Manuscript</th><th>Journal</th><th>Stage or outcome</th><th>First event date</th><th></th></tr></thead><tbody>
+      {% for s in all_subs %}<tr><td>{{ s.manuscript_title }}</td><td>{{ s.journal_name }}</td><td>{{ state_labels.get(s.current_state, s.current_state) }}</td><td>{{ s.started_on or 'Not set' }}</td><td><a href="/submissions/{{ s.id }}">Timeline →</a></td></tr>{% endfor %}
+    </tbody></table></div>{% else %}<p class="pub-muted">Your journal attempts and their outcomes will appear here.</p>{% endif %}
+  </section>
 </div>
 {% endblock %}

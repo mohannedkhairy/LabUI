@@ -1,6 +1,7 @@
 """Corpus builder: fetches abstracts from CrossRef, OpenAlex, and RSS/Atom feeds."""
 
 import json
+import logging
 import re
 import sqlite3
 from datetime import datetime, timedelta, timezone
@@ -10,7 +11,8 @@ import httpx
 
 CROSSREF_API = "https://api.crossref.org/works"
 OPENALEX_API = "https://api.openalex.org/works"
-UA = "jfr/0.1 (mailto:contact@example.com)"
+UA = "LabUI/1.0 (journal corpus retrieval)"
+log = logging.getLogger(__name__)
 
 
 def _cutoff_date(months: int) -> str:
@@ -35,6 +37,8 @@ def fetch_crossref_articles(
             params = {
                 "filter": f"issn:{issn},from-pub-date:{cutoff}",
                 "select": "DOI,title,abstract,published,author,subject",
+                "sort": "published",
+                "order": "desc",
                 "rows": per_page,
                 "cursor": cursor,
             }
@@ -74,19 +78,26 @@ def fetch_openalex_articles(
     """Retrieve recent articles for a journal ISSN from OpenAlex."""
     cutoff = _cutoff_date(months)
     articles = []
-    cursor = "*"
-    per_page = min(200, limit)
+    page = 1
+    per_page = min(100, limit)
 
     with httpx.Client(timeout=30, headers={"User-Agent": UA}) as client:
-        while len(articles) < limit:
+        while len(articles) < limit and page * per_page <= 10000:
             params = {
-                "filter": f"locations.source.issn:{issn},from_publication_date:{cutoff}",
+                "filter": f"locations.source.issn:{issn},from_publication_date:{cutoff},has_abstract:true",
                 "select": "doi,title,abstract_inverted_index,publication_date,keywords,concepts",
+                "sort": "publication_date:desc",
                 "per-page": per_page,
-                "cursor": cursor,
+                "page": page,
             }
-            resp = client.get(OPENALEX_API, params=params)
-            resp.raise_for_status()
+            try:
+                resp = client.get(OPENALEX_API, params=params)
+                resp.raise_for_status()
+            except httpx.HTTPError:
+                if not articles:
+                    raise
+                log.warning('OpenAlex stopped after %s usable articles for ISSN %s; retaining fetched pages', len(articles), issn)
+                break
             data = resp.json()
             results = data.get("results", [])
             if not results:
@@ -103,10 +114,9 @@ def fetch_openalex_articles(
                     "keywords": [k.get("keyword", "") for k in (r.get("keywords") or [])],
                     "topics": [c.get("display_name", "") for c in (r.get("concepts") or [])[:5]],
                 })
-            meta = data.get("meta", {})
-            cursor = meta.get("next_cursor", "")
-            if not cursor:
+            if page * per_page >= data.get('meta', {}).get('count', float('inf')):
                 break
+            page += 1
             if progress_cb:
                 progress_cb(len(articles))
 

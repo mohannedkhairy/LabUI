@@ -1,0 +1,27 @@
+{# Existing processes can read new template files before their Python routes
+   reload. Keep their original tools usable during that short deployment gap. #}
+{% set workspaces = [
+  {'id':'lab','name':'Lab','description':'Preparation, tasks, and experiments','home':'/plan'},
+  {'id':'research','name':'Research & AI','description':'Papers, local AI, and agents','home':'/research/chat'},
+  {'id':'writing','name':'Writing & Publishing','description':'Drafts, citations, and publication','home':'/write'}
+] %}
+{% set path = request.url.path %}
+{% if path.startswith(('/research/style', '/research/phrasebank', '/write', '/manuscripts', '/recommend', '/submissions', '/publications', '/journals')) %}
+  {% set workspace = workspaces[2] %}
+{% elif path.startswith(('/research', '/library', '/review')) or path == '/lab' %}
+  {% set workspace = workspaces[1] %}
+{% else %}{% set workspace = workspaces[0] %}{% endif %}
+{% set workspace_navigation = [{'label':workspace.name,'href':workspace.home,'icon':'M3 10l9-7 9 7v10H3V10z','active':true}] %}
+{% set workspace_commands = [
+  ['Lab planner','/plan','Lab'],['Tasks','/plan?view=board&kind=task','Lab'],['Equipment inventory','/equipment','Lab'],
+  ['Experiments','/plan?view=list&kind=experiment','Lab'],
+  ['Chat & agents','/research/chat','Research & AI'],['Library','/library','Research & AI'],
+  ['Publication scout','/research/scout','Research & AI'],['Paper search','/research/search','Research & AI'],
+  ['Paper review','/review','Research & AI'],['Research memory','/research/memory','Research & AI'],
+  ['Notes','/research/notes','Research & AI'],['Knowledge graph','/research/graph','Research & AI'],
+  ['Add papers','/research/upload','Research & AI'],
+  ['Writing projects','/write','Writing & Publishing'],['Manuscripts','/manuscripts','Writing & Publishing'],
+  ['Submissions','/submissions','Writing & Publishing'],['Published papers','/publications','Writing & Publishing'],
+  ['Writing style','/research/style','Writing & Publishing'],['Journals','/journals','Writing & Publishing'],
+  ['Journal recommendations','/recommend','Writing & Publishing']
+] %}

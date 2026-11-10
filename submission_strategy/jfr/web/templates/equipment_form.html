@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+{% block title %}{{ 'Edit equipment' if editing else 'Add equipment' }}{% endblock %}
+{% block heading %}{{ 'Edit equipment' if editing else 'Add equipment' }}{% endblock %}
+{% block subtitle %}Keep identification, important dates, and supplier details together{% endblock %}
+{% block head %}<link rel="stylesheet" href="/static/equipment.css">{% endblock %}
+{% block header_actions %}<a class="toolbar-btn" href="/equipment{% if editing %}/{{ equipment.id }}{% endif %}">Cancel</a>{% endblock %}
+{% macro field(name,label,type='text',required=false) %}<label><span>{{ label }}{% if required %} *{% endif %}</span><input type="{{ type }}" name="{{ name }}" value="{{ equipment.get(name) or '' }}" {% if required %}required{% endif %} {% if type!='date' %}maxlength="300"{% endif %}></label>{% endmacro %}
+{% block content %}
+{% if error %}<p class="eq-error" role="alert">{{ error }}</p>{% endif %}
+<form method="post" action="{{ '/equipment/'+equipment.id+'/edit' if editing else '/equipment' }}" class="eq-form eq-editor">
+  <fieldset class="tile"><legend>Identification and location</legend><div class="eq-fields">
+    {{ field('name','Equipment name',required=true) }}{{ field('asset_tag','Asset tag') }}
+    {{ field('category','Category') }}<label><span>Status</span><select name="status">{% for key,label in equipment_statuses.items() %}<option value="{{ key }}" {% if equipment.get('status','operational')==key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+    {{ field('manufacturer','Manufacturer') }}{{ field('model','Model') }}{{ field('serial_number','Serial number') }}
+    {{ field('location','Location / room') }}{{ field('owner','Responsible person') }}
+  </div><label><span>Description and capabilities</span><textarea name="description" rows="5" maxlength="30000">{{ equipment.get('description') or '' }}</textarea></label></fieldset>
+  <fieldset class="tile"><legend>Important dates</legend><div class="eq-fields">{% for key,label in equipment_date_fields.items() %}{{ field(key,label,'date') }}{% endfor %}</div><p class="eq-meta">Leave unknown dates blank. Additional dated events can be added after saving.</p></fieldset>
+  <fieldset class="tile"><legend>Vendor and support</legend><div class="eq-fields">{{ field('vendor_name','Vendor / service company') }}{{ field('vendor_contact','Contact person') }}{{ field('vendor_email','Email','email') }}{{ field('vendor_phone','Phone','tel') }}{{ field('vendor_url','Website','url') }}</div></fieldset>
+  <fieldset class="tile"><legend>Equipment notes</legend><label><span class="sr-only">Notes</span><textarea name="notes" rows="5" maxlength="30000">{{ equipment.get('notes') or '' }}</textarea></label></fieldset>
+  <div class="eq-actions"><button class="toolbar-btn btn-signal" type="submit">{{ 'Save changes' if editing else 'Create equipment record' }}</button><a class="toolbar-btn" href="/equipment{% if editing %}/{{ equipment.id }}{% endif %}">Cancel</a></div>
+</form>
+{% endblock %}

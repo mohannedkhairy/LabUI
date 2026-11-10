@@ -37,6 +37,7 @@ class ScoreDecomposition:
     lexical_techniques: float = 0.0
     principal_claim: float = 0.0
     topk_dispersion_penalty: float = 0.0
+    scope: float = 0.0
 
 
 @dataclass
@@ -47,7 +48,7 @@ class PolicyResult:
 
 @dataclass
 class RecommendationEntry:
-    rank: int
+    rank: Optional[int]
     journal_id: str
     journal_name: str
     score: float
@@ -57,6 +58,8 @@ class RecommendationEntry:
     user_history: dict = field(default_factory=dict)
     median_turnaround_days: Optional[int] = None
     rationale: str = ""
+    evidence_basis: str = 'unavailable'
+    corpus_articles: int = 0
 
     def to_dict(self) -> dict:
         return {
@@ -69,6 +72,7 @@ class RecommendationEntry:
                 "lexical_techniques": self.decomposition.lexical_techniques,
                 "principal_claim": self.decomposition.principal_claim,
                 "topk_dispersion_penalty": self.decomposition.topk_dispersion_penalty,
+                "scope": self.decomposition.scope,
             },
             "policy_passed": self.policy.passed,
             "policy_reason": self.policy.reason,
@@ -76,7 +80,43 @@ class RecommendationEntry:
             "user_history": self.user_history,
             "median_turnaround_days": self.median_turnaround_days,
             "rationale": self.rationale,
+            "evidence_basis": self.evidence_basis,
+            "corpus_articles": self.corpus_articles,
         }
+
+
+def _lexical_evidence(conn, journals, manuscript, top_k):
+    """Compare all venues in one TF-IDF space; retain inspectable article matches."""
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    texts = [(j['name'] or '') + '. ' + (j['scope_statement'] or '') for j in journals]
+    owners = []
+    for journal in journals:
+        rows = conn.execute("""SELECT doi,title,abstract FROM corpus_article WHERE journal_id=?
+            AND trim(COALESCE(abstract,''))!='' ORDER BY published_date DESC LIMIT 500""", (journal['id'],)).fetchall()
+        for row in rows:
+            texts.append((row['title'] or '') + '. ' + (row['abstract'] or ''))
+            owners.append((journal['id'], row))
+    evidence = {j['id']: {'scope': 0.0, 'article_score': 0.0, 'articles': [], 'count': 0} for j in journals}
+    if not texts:
+        return evidence
+    query = manuscript.query_text() + ' ' + manuscript.principal_claim + ' ' + ' '.join(manuscript.techniques)
+    try:
+        vectorizer = TfidfVectorizer(stop_words='english', ngram_range=(1, 2), sublinear_tf=True)
+        vectors = vectorizer.fit_transform(texts)
+        similarities = (vectors @ vectorizer.transform([query]).T).toarray().ravel()
+    except ValueError:
+        return evidence
+    for journal, value in zip(journals, similarities[:len(journals)]):
+        evidence[journal['id']]['scope'] = float(value)
+    matches = {j['id']: [] for j in journals}
+    for (jid, row), value in zip(owners, similarities[len(journals):]):
+        matches[jid].append({'doi': row['doi'], 'title': row['title'], 'similarity': float(value)})
+    for jid, articles in matches.items():
+        articles.sort(key=lambda article: -article['similarity'])
+        evidence[jid].update(count=len(articles),
+            article_score=float(np.mean([a['similarity'] for a in articles[:top_k]])) if articles else 0.0,
+            articles=[a for a in articles[:5] if a['similarity'] > 0])
+    return evidence
 
 
 def _build_bm25_corpus(conn: sqlite3.Connection, journal_id: str, limit: int = 500) -> tuple[BM25Okapi, list[dict]]:
@@ -161,9 +201,9 @@ def score_journal_lexical(
 
 def _median_turnaround(conn: sqlite3.Connection, journal_id: str) -> Optional[int]:
     """Median submission→first-decision days from our own tracker history for this journal."""
-    from datetime import datetime
+    from datetime import date
     rows = conn.execute(
-        """SELECT t.transitioned_at, s.submitted_at
+        """SELECT COALESCE(t.occurred_on,substr(t.transitioned_at,1,10)) AS decision_on, s.submitted_at
            FROM submission s
            JOIN submission_transition t ON t.submission_id = s.id
            WHERE s.journal_id = ?
@@ -174,8 +214,8 @@ def _median_turnaround(conn: sqlite3.Connection, journal_id: str) -> Optional[in
     days_list = []
     for r in rows:
         try:
-            sub = datetime.fromisoformat(r["submitted_at"].replace("Z", "+00:00"))
-            dec = datetime.fromisoformat(r["transitioned_at"].replace("Z", "+00:00"))
+            sub = date.fromisoformat(r["submitted_at"][:10])
+            dec = date.fromisoformat(r["decision_on"])
             d = (dec - sub).days
             if d >= 0:
                 days_list.append(d)
@@ -195,7 +235,7 @@ def build_user_history(conn: sqlite3.Connection, manuscript_id: str, journal_id:
            ORDER BY s.created_at DESC""",
         (journal_id, manuscript_id),
     ).fetchall()
-    accepted = sum(1 for r in rows if r["current_state"] == "accepted")
+    accepted = sum(1 for r in rows if r["current_state"] in {"accepted", "proofs", "published"})
     rejected = sum(1 for r in rows if "rejected" in r["current_state"])
     return {
         "prior_submissions": len(rows),
@@ -206,6 +246,14 @@ def build_user_history(conn: sqlite3.Connection, manuscript_id: str, journal_id:
 
 def build_rationale(entry: RecommendationEntry) -> str:
     parts = []
+    if entry.evidence_basis == 'scope':
+        parts.append('journal scope comparison; no recent article corpus available')
+    elif entry.evidence_basis == 'article_text':
+        parts.append(f'text comparison with {entry.corpus_articles} recent articles')
+    elif entry.evidence_basis == 'semantic_articles':
+        parts.append(f'semantic and text comparison with {entry.corpus_articles} recent articles')
+    else:
+        parts.append('insufficient journal scope or article evidence to rank this venue')
     if entry.decomposition.dense_abstract >= 0.7:
         parts.append(f"strong abstract match (score {entry.decomposition.dense_abstract:.2f})")
     if entry.decomposition.lexical_techniques >= 0.5:
@@ -215,8 +263,6 @@ def build_rationale(entry: RecommendationEntry) -> str:
         parts.append(f"prior acceptance at this venue")
     if hist.get("prior_rejections", 0) > 0:
         parts.append(f"prior rejection — review rejection notes")
-    if not parts:
-        parts.append("moderate topical overlap across recent articles")
     return "; ".join(parts).capitalize() + "."
 
 
@@ -241,14 +287,35 @@ def recommend(
     # Both vectors use abstract_model (specter2, 768-dim) so they're in the same
     # space as the Qdrant corpus.  claim_model (bge-large, 1024-dim) is reserved
     # for a future non-Qdrant re-ranking pass.
-    query_vec = embed_texts([manuscript.query_text()], abstract_model)[0]
-    claim_vec = embed_texts([manuscript.principal_claim], abstract_model)[0]
-    lex_tokens = manuscript.lexical_tokens()
+    query_vec = claim_vec = None
+    lexical = _lexical_evidence(conn, journals, manuscript, top_k)
+    # Keep scores comparable during a partial corpus build. Semantic scores
+    # become available together once every eligible article corpus is indexed.
+    dense_ready = qdrant_client is not None
+    for journal in journals:
+        jid = journal['id']
+        if (json.loads(journal['metadata_json'] or '{}').get('active') is False
+                or policy.is_journal_excluded(jid)[0]
+                or not policy.check_open_access(bool(journal['is_fully_oa']), bool(journal['is_hybrid_oa']))[0]
+                or not policy.check_impact_factor(journal['impact_factor'], journal_id=jid)[0]
+                or not policy.check_publisher(journal['publisher_family'])[0]
+                or not lexical[jid]['count']):
+            continue
+        pending = conn.execute("""SELECT count(*) FROM corpus_article WHERE journal_id=?
+            AND trim(COALESCE(abstract,''))!='' AND (vector_id IS NULL OR COALESCE(embedding_model,'')!=?)""",
+            (jid, abstract_model)).fetchone()[0]
+        if pending:
+            dense_ready = False
+            break
 
     candidates: list[RecommendationEntry] = []
 
     for j in journals:
         jid = j["id"]
+        metadata = json.loads(j['metadata_json'] or '{}')
+        if metadata.get('active') is False:
+            candidates.append(_policy_fail(j, metadata.get('status_reason') or 'This journal no longer accepts submissions', 0))
+            continue
 
         # Policy filter (hard)
         excluded, excl_reason = policy.is_journal_excluded(jid)
@@ -273,16 +340,21 @@ def recommend(
         collection = f"journal_{jid}"
         # Check collection exists
         try:
-            info = qdrant_client.get_collection(collection)
-            has_vectors = bool(info.points_count and info.points_count > 0)
+            info = qdrant_client.get_collection(collection) if dense_ready else None
+            has_vectors = bool(info is not None and info.points_count and info.points_count > 0)
         except Exception:
             has_vectors = False
 
         dense_abs, dense_claim, dispersion, nearest = (0.0, 0.0, 0.0, [])
         if has_vectors:
-            dense_abs, dense_claim, dispersion, nearest = score_journal_dense(
-                qdrant_client, collection, query_vec, claim_vec, top_k
-            )
+            try:
+                if query_vec is None:
+                    query_vec, claim_vec = embed_texts([manuscript.query_text(), manuscript.principal_claim], abstract_model)
+                dense_abs, dense_claim, dispersion, nearest = score_journal_dense(
+                    qdrant_client, collection, query_vec, claim_vec, top_k
+                )
+            except Exception:
+                has_vectors = False
             # Enrich nearest articles with title from SQLite
             if nearest:
                 dois = [a["doi"] for a in nearest if a.get("doi")]
@@ -298,14 +370,18 @@ def recommend(
                     for a in nearest:
                         a["title"] = title_map.get(a.get("doi"), "")
 
-        bm25, _ = _build_bm25_corpus(conn, jid)
-        lex_score = score_journal_lexical(bm25, lex_tokens)
+        local = lexical[jid]
+        lex_score = local['article_score']
+        basis = 'semantic_articles' if has_vectors else ('article_text' if local['count'] else 'scope')
+        if not has_vectors:
+            nearest = local['articles']
 
         decomp = ScoreDecomposition(
             dense_abstract=round(dense_abs, 4),
             lexical_techniques=round(lex_score, 4),
             principal_claim=round(dense_claim, 4),
             topk_dispersion_penalty=round(dispersion, 4),
+            scope=round(local['scope'], 4),
         )
 
         history = build_user_history(conn, manuscript_id, jid)
@@ -321,23 +397,28 @@ def recommend(
             nearest_articles=nearest,
             user_history=history,
             median_turnaround_days=turnaround,
+            evidence_basis=basis,
+            corpus_articles=local['count'],
         )
         entry.score = round(
-            (dense_abs * 0.5 + lex_score * 0.25 + dense_claim * 0.25) + dispersion, 4
+            ((dense_abs * 0.5 + lex_score * 0.25 + dense_claim * 0.25) + dispersion) if has_vectors
+            else (.8 * lex_score + .2 * local['scope'] if local['count'] else local['scope']), 4
         )
+        if entry.score <= 0:
+            entry.evidence_basis = 'unavailable'
         entry.rationale = build_rationale(entry)
         candidates.append(entry)
 
     passed = [c for c in candidates if c.policy.passed]
     failed = [c for c in candidates if not c.policy.passed]
-    passed.sort(key=lambda x: -x.score)
+    passed.sort(key=lambda x: (-x.score, x.journal_name))
 
     results = []
     for i, e in enumerate(passed[:top_n]):
-        e.rank = i + 1
+        e.rank = i + 1 if e.score > 0 else None
         results.append(e)
     for e in failed:
-        e.rank = len(results) + 1
+        e.rank = None
         results.append(e)
 
     return results

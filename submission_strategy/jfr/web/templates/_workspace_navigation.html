@@ -1,0 +1,23 @@
+<details class="workspace-switcher" id="workspace-switcher">
+  <summary aria-label="Switch workspace">
+    <span class="workspace-switcher-text"><span class="eyebrow">Workspace</span><strong>{{ workspace.name }}</strong></span>
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path stroke-width="1.8" d="M7 10l5 5 5-5"/></svg>
+  </summary>
+  <nav class="workspace-options" aria-label="Switch workspace">
+    {% for space in workspaces %}
+    <a href="{{ space.home }}" {% if space.id == workspace.id %}aria-current="true"{% endif %}>
+      <span>{{ space.name }}</span><small>{{ space.description }}</small>
+    </a>
+    {% endfor %}
+  </nav>
+</details>
+<nav id="workspace-navigation" class="flex-1 overflow-y-auto scroll-thin px-3 pb-2" aria-label="{{ workspace.name }} navigation">
+  {% for item in workspace_navigation %}
+  <a href="{{ item.href }}" class="nav-link{% if item.active %} active{% endif %}" {% if item.active %}aria-current="page"{% endif %}>
+    <svg class="w-[17px] h-[17px] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="{{ item.icon }}"/>
+    </svg>
+    <span>{{ item.label }}</span>
+  </a>
+  {% endfor %}
+</nav>

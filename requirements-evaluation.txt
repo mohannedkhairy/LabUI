@@ -1,0 +1,5 @@
+# Optional CLI evaluation harness; not needed for any web feature.
+-r requirements.txt
+ragas>=0.4
+datasets
+langchain-community

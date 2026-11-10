@@ -14,6 +14,11 @@ node_modules/
 
 # ── Runtime data — never commit (user papers, indexes, notes, DBs) ───────────
 .data/
+/Papers/
+/SESSION_HANDOFF.md
+/docs/review-data/
+/docs/INITIAL_ASSESSMENT.md
+/docs/RETRIEVAL_GPU_REVIEW.md
 Local_Rag/papers/*
 !Local_Rag/papers/.gitkeep
 Local_Rag/output/*
@@ -31,17 +36,40 @@ Local_Rag/rag/logs/*
 *.db
 *.sqlite
 *.sqlite-*
+*.db-*
+*.sqlite3
+*.sqlite3-*
 *.pre_*
 *.bak
 *.bak_*
 *.gguf
 *.pt
 *.bin
+*.safetensors
+*.onnx
+*.pth
+
+# Local configuration and credentials; publish examples only.
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+*.env
+*.pem
+*.key
+*.log
+
+# Python installation uses the shared root requirements through setup.sh.
+# Do not keep a second, independently resolved component lockfile.
+/submission_strategy/uv.lock
 
 # ── Caches ───────────────────────────────────────────────────────────────────
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+.coverage*
+htmlcov/
 
 # ── OS / editor cruft ────────────────────────────────────────────────────────
 .DS_Store

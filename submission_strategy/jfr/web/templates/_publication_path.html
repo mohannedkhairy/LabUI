@@ -1,0 +1,24 @@
+<section class="pub-card" aria-label="Publication path">
+  <div class="pub-row"><div><div class="pub-kicker">Publication path</div><h3 style="margin-bottom:0">{{ workflow.label }}</h3></div><span class="pub-badge">{{ workflow.days_in_stage }} day{{ '' if workflow.days_in_stage == 1 else 's' }} {{ 'in this stage' if workflow.stage_date_known else 'since recorded' }}</span></div>
+  <div class="wf-scroll" id="publication-path-scroll">
+    <svg class="wf-graph" viewBox="0 0 1020 184" role="img" aria-labelledby="publication-path-title publication-path-desc">
+      <title id="publication-path-title">Manuscript workflow: {{ workflow.label }}</title>
+      <desc id="publication-path-desc">Draft, internal review, supervisor approval, submission, peer review and revisions, acceptance, optional proofs, then publication. Revisions may return to peer review.</desc>
+      <defs><marker id="workflow-arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0 0 L6 3 L0 6" fill="none" stroke="currentColor"/></marker></defs>
+      {% for stage in workflow.stages %}
+      {% if not loop.last %}<path class="wf-edge" d="M{{ stage.x + 43 }} 67 H{{ stage.x + 69 }}"/>{% endif %}
+      <g class="wf-node {{ stage.status }}" data-stage="{{ stage.key }}" data-status="{{ stage.status }}">
+        <title>{{ stage.label }} — {{ stage.status.replace('unrecorded','not recorded') }}</title>
+        <rect x="{{ stage.x - 43 }}" y="33" width="86" height="68" rx="12"/>
+        <text x="{{ stage.x }}" y="{{ 56 if stage.lines|length > 1 else 65 }}" class="wf-title">{{ stage.lines[0] }}</text>
+        {% if stage.lines|length > 1 %}<text x="{{ stage.x }}" y="71" class="wf-title">{{ stage.lines[1] }}</text>{% endif %}
+        {% if stage.date %}<text x="{{ stage.x }}" y="90" class="wf-date">{{ stage.date }}</text>{% endif %}
+        <text x="{{ stage.x }}" y="21" class="wf-small">{{ 'CURRENT' if stage.status == 'current' else 'RECORDED' if stage.status == 'complete' else 'NOT RECORDED' if stage.status == 'unrecorded' else '' }}</text>
+      </g>
+      {% endfor %}
+      <path class="wf-loop" d="M618 108 C618 150 506 150 506 108" marker-end="url(#workflow-arrow)"/>
+      <text x="562" y="167" class="wf-small">Another review round</text>
+    </svg>
+  </div>
+  <p class="pub-muted">Dates show the latest dated event in each stage. Proofs are optional. <a class="pub-link" href="#timeline">Edit timeline dates</a>. Swipe across the path on smaller screens.</p>
+</section>

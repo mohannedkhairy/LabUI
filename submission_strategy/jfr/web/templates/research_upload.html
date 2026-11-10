@@ -91,6 +91,17 @@
         <div class="flex items-center justify-between"><span class="text-ink-400">Indexed</span><span class="font-mono" id="idx-papers">—</span></div>
         <div class="flex items-center justify-between"><span class="text-ink-400">Chunks</span><span class="font-mono" id="idx-chunks">—</span></div>
         <div class="flex items-center gap-2 mt-2"><span class="status-dot" id="idx-running"></span><span id="idx-msg" class="text-ink-400 text-[11px] truncate">…</span></div>
+        <div id="embedding-upgrade" hidden style="margin-top:16px;padding-top:12px;border-top:1px solid var(--line)">
+          <p style="font-size:12px;font-weight:600">Embedding upgrade</p>
+          <p id="embedding-upgrade-message" style="font-size:12px;color:var(--ink-muted);margin:6px 0" aria-live="polite"></p>
+          <progress id="embedding-upgrade-bar" value="0" max="1" style="width:100%;height:6px;accent-color:var(--signal)" aria-label="Embedding upgrade progress"></progress>
+        </div>
+        <div id="bulk-import-progress" hidden style="margin-top:16px;padding-top:12px;border-top:1px solid var(--line)">
+          <p style="font-size:12px;font-weight:600">Library import</p>
+          <p id="bulk-import-message" style="font-size:12px;color:var(--ink-muted);margin:6px 0;overflow-wrap:anywhere" aria-live="polite"></p>
+          <progress id="bulk-import-bar" value="0" max="1" style="width:100%;height:6px;accent-color:var(--signal)" aria-label="Library import progress"></progress>
+          <p id="bulk-import-counts" style="font-size:11px;color:var(--ink-muted);margin-top:6px"></p>
+        </div>
       </div>
     </div>
 
@@ -126,6 +137,8 @@
       </p>
       <div class="mt-3 text-[11px]">
         <div class="flex items-center gap-2"><span class="status-dot" id="sum-running"></span><span id="sum-msg" class="text-ink-400 text-[11px] truncate">Idle</span></div>
+        <div id="sum-counts" class="mt-2 text-ink-600 dark:text-ink-300" aria-live="polite"></div>
+        <details id="sum-missing" class="mt-2" hidden><summary>Summaries needing attention</summary><ul id="sum-missing-list" class="mt-2 space-y-2"></ul></details>
       </div>
     </div>
 
@@ -379,18 +392,33 @@ async function triggerSummaries() {
     else { btn.textContent = 'Running…'; startSumPolling(); }
     refreshSumStatus();
   } catch (e) { btn.textContent = 'Error'; }
-  setTimeout(() => { btn.disabled = false; btn.textContent = 'Generate'; }, 3500);
+  refreshSumStatus();
 }
 
 async function refreshSumStatus() {
   try {
     const r = await fetch('/api/rag/summaries/build/status');
     const s = await r.json();
+    const btn = document.getElementById('btn-summaries');
+    btn.disabled = !!s.running;
+    btn.textContent = s.running ? 'Running…' : 'Generate missing';
     document.getElementById('sum-msg').textContent = s.message || 'Idle';
+    document.getElementById('sum-counts').textContent = `${s.available || 0} of ${s.library_total || 0} summaries ready · ${s.pending || 0} missing`;
+    document.getElementById('sum-missing').hidden = !(s.missing || []).length;
+    const missingList = document.getElementById('sum-missing-list');
+    missingList.replaceChildren();
+    for (const paper of s.missing || []) {
+      const li = document.createElement('li');
+      li.textContent = `${paper.title || paper.paper_id}: ${paper.reason}`;
+      missingList.appendChild(li);
+    }
     const dot = document.getElementById('sum-running');
     dot.classList.remove('ok', 'warn', 'err', 'pulse');
     if (s.running) dot.classList.add('warn', 'pulse');
-    else if ((s.message || '').includes('✓')) dot.classList.add('ok');
+    else if (s.failed) dot.classList.add('err');
+    else if (s.pending) dot.classList.add('warn');
+    else if (s.library_total) dot.classList.add('ok');
+    if (s.running) startSumPolling();
     if (!s.running && sumPoll) { clearInterval(sumPoll); sumPoll = null; }
   } catch (e) {}
 }
@@ -408,6 +436,28 @@ async function refreshUploadStatus() {
     const s = await r.json();
     document.getElementById('idx-papers').textContent = (s.papers ?? 0).toLocaleString();
     document.getElementById('idx-chunks').textContent = (s.chunks ?? 0).toLocaleString();
+    const upgrade = s.embedding_migration;
+    if (upgrade) {
+      document.getElementById('embedding-upgrade').hidden = false;
+      document.getElementById('embedding-upgrade-message').textContent = upgrade.phase === 'active'
+        ? `${upgrade.model} is active.`
+        : upgrade.phase === 'rolled_back'
+        ? 'The upgrade did not pass its health checks. Search is using the previous index; the saved build can be resumed.'
+        : `${upgrade.model}: ${(upgrade.done || 0).toLocaleString()} / ${(upgrade.total || 0).toLocaleString()} vectors built. Current search remains available.`;
+      const bar = document.getElementById('embedding-upgrade-bar');
+      bar.max = Math.max(1, upgrade.total || 1);
+      bar.value = upgrade.done || 0;
+    }
+    const bulk = s.ingest?.bulk_import;
+    if (bulk) {
+      document.getElementById('bulk-import-progress').hidden = false;
+      document.getElementById('bulk-import-message').textContent = bulk.message;
+      const counts = bulk.counts || {};
+      const bar = document.getElementById('bulk-import-bar');
+      bar.max = Math.max(1, bulk.total || 1);
+      bar.value = bulk.phase === 'copying' ? bulk.processed : (counts.indexed || 0) + (counts.duplicate || 0) + (counts.invalid || 0) + (counts.failed || 0);
+      document.getElementById('bulk-import-counts').textContent = `${counts.indexed || 0} imported · ${counts.duplicate || 0} duplicates · ${(counts.invalid || 0) + (counts.failed || 0)} need attention · ${bulk.total} source files`;
+    }
     const msg = (s.ingest && s.ingest.message) || 'idle';
     document.getElementById('idx-msg').textContent = msg;
     const dot = document.getElementById('idx-running');

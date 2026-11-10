@@ -1,0 +1,61 @@
+<div class="tile tile-flush scout-widget" data-running="{{ 'true' if scout.running else 'false' }}" data-run="{{ scout.latest.id if scout.latest else '' }}" data-status="{{ scout.latest.status if scout.latest else '' }}">
+  <div class="scout-heading">
+    <div class="scout-grow">
+      <div class="eyebrow">Weekly literature watch</div>
+      <h3 class="font-display scout-title">Nanobubble scout</h3>
+    </div>
+    <form action="/research/scout/run" method="post" data-scout-run>
+      <button class="toolbar-btn" type="submit" {% if scout.running %}disabled{% endif %}>{{ 'Scanning…' if scout.running else 'Scan now' }}</button>
+    </form>
+    {% if not full %}<a href="/research/scout" class="toolbar-btn">All reports →</a>{% endif %}
+  </div>
+  <div class="scout-body">
+    <div class="scout-summary" aria-live="polite">
+      {% if scout.running %}
+        <span class="chip chip-brand">Scanning</span> Looking for new publications. Results appear here as sources finish.
+      {% elif scout.latest %}
+        {% if scout.latest.status == 'done' %}<span class="chip chip-success">Complete</span>
+        {% elif scout.latest.status == 'partial' %}<span class="chip chip-warn">Incomplete coverage</span>
+        {% else %}<span class="chip chip-warn">Scan needs retry</span>{% endif %}
+        <a href="/research/scout?run_id={{ scout.latest.id }}">{{ scout.latest.new_count }} newly found publication{{ '' if scout.latest.new_count == 1 else 's' }} in the last scan</a>
+        · {{ scout.total }} in the current seven-day window.
+      {% else %}
+        {% if scout.scheduled %}The first scan is due now.{% else %}Automatic scans are paused. Use Scan now to start.{% endif %}
+        Every scan covers only the previous seven complete UTC days.
+      {% endif %}
+    </div>
+    <div class="scout-meta">
+      Publication dates: {{ scout.window_start }} through {{ scout.window_end }} (UTC).
+      Older, future, missing, and imprecise dates are excluded.<br>
+      {% if scout.latest %}Last started <time datetime="{{ scout.latest.started_at }}">{{ scout.latest.started_at[:16].replace('T', ' ') }} UTC</time>. {% endif %}
+      {% if scout.scheduled %}
+        {% if scout.latest and scout.latest.status in ['partial', 'error', 'interrupted'] %}Retry due{% else %}Next scan due{% endif %}
+        <time datetime="{{ scout.next_run }}">{{ scout.next_run[:16].replace('T', ' ') }} UTC</time>.
+        Runs automatically every 7 days while LabUI is running. No dashboard visit or button click is needed.
+        After downtime, only the latest seven-day window is searched.
+      {% else %}Automatic scans are paused.{% endif %}
+    </div>
+    {% if scout.latest and scout.latest.error %}<p class="scout-error">{{ scout.latest.error }}</p>{% endif %}
+    <div class="scout-sources">
+      {% for name in scout.sources %}
+        {% set source = scout.latest.sources.get(name) if scout.latest else none %}
+        <span class="chip {% if source and source.status == 'error' %}chip-warn{% elif source and source.status == 'done' %}chip-success{% endif %}">{{ name }} · {{ source.status if source else 'waiting' }}</span>
+      {% endfor %}
+    </div>
+    {% if scout.latest %}{% for name, source in scout.latest.sources.items() %}{% if source.error %}
+      <p class="scout-error">{{ name }}: {{ source.error }}</p>
+    {% endif %}{% endfor %}{% endif %}
+    {% if not full %}
+      {% for paper in scout_papers %}
+        <div class="scout-preview">
+          <a href="{{ paper.url or '/research/scout' }}" {% if paper.url %}target="_blank" rel="noopener noreferrer"{% endif %}>{{ paper.title }}</a>
+          <div class="scout-meta">{{ paper.journal or (paper.sources.keys() | join(', ')) }} · {{ paper.published or 'Publication date unavailable' }}{% if paper.kind == 'preprint' %} · Preprint{% endif %}</div>
+        </div>
+      {% endfor %}
+      {% if not scout_papers and scout.latest and not scout.running %}
+        <p class="scout-meta">{% if scout.latest.status == 'done' %}No matching publications were found in the searched window.{% else %}No publications saved yet. Coverage is incomplete; failed sources will be retried.{% endif %}</p>
+      {% endif %}
+    {% endif %}
+    <p class="scout-meta scout-footnote">Searches nanobubbles, nano bubbles, ultrafine bubbles, and ultra fine bubbles. Coverage depends on source indexing and available metadata.</p>
+  </div>
+</div>

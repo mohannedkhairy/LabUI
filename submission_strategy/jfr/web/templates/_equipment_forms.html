@@ -1,0 +1,23 @@
+{% macro field(record,name,label,type='text',required=false) %}<label><span>{{ label }}{% if required %} *{% endif %}</span><input name="{{ name }}" type="{{ type }}" value="{{ record.get(name) or '' }}" {% if required %}required{% endif %} {% if type=='text' %}maxlength="300"{% endif %}></label>{% endmacro %}
+{% macro record_form(kind,record) %}
+<form class="eq-form eq-record-form" method="post" action="/equipment/{{ equipment.id }}/records/{{ kind }}{% if record.get('id') %}/{{ record.id }}{% endif %}">
+  <div class="eq-fields">
+  {% if kind=='maintenance' %}
+    {{ field(record,'title','Service / work title',required=true) }}
+    <label><span>Type</span><select name="kind">{% for key,label in maintenance_kinds.items() %}<option value="{{ key }}" {% if record.get('kind','service')==key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+    {{ field(record,'scheduled_for','Scheduled / due date','date',true) }}
+    <label><span>Status</span><select name="status">{% for key,label in maintenance_statuses.items() %}<option value="{{ key }}" {% if record.get('status','planned')==key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+    {{ field(record,'completed_on','Completion date','date') }}{{ field(record,'performed_by','Performed by / service provider') }}{{ field(record,'next_due_on','Next service / calibration due','date') }}
+  {% elif kind=='interaction' %}
+    {{ field(record,'subject','Subject',required=true) }}{{ field(record,'occurred_on','Interaction date','date',true) }}
+    <label><span>Channel</span><select name="channel">{% for key,label in contact_channels.items() %}<option value="{{ key }}" {% if record.get('channel','email')==key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+    {{ field(record,'contact','Vendor / person / contact details') }}{{ field(record,'reference','Quote, ticket, order, or email reference') }}{{ field(record,'follow_up_on','Follow-up date','date') }}
+    <label><span>Follow-up status</span><select name="status"><option value="open" {% if record.get('status','open')=='open' %}selected{% endif %}>Open</option><option value="closed" {% if record.get('status')=='closed' %}selected{% endif %}>Closed</option></select></label>
+  {% else %}
+    {{ field(record,'title','Date label',required=true) }}{{ field(record,'occurs_on','Date','date',true) }}
+  {% endif %}
+  </div>
+  <label><span>Notes / details</span><textarea name="notes" rows="4" maxlength="50000">{{ record.get('notes') or '' }}</textarea></label>
+  <button class="toolbar-btn btn-signal" type="submit">{{ 'Save changes' if record.get('id') else 'Save record' }}</button>
+</form>
+{% endmacro %}

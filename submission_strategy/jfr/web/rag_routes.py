@@ -42,12 +42,13 @@ if str(_LOCAL_RAG_DIR) not in sys.path:
     sys.path.insert(0, str(_LOCAL_RAG_DIR))
 
 from config import (  # noqa: E402  — comes from Local_Rag/rag/config.py
-    OLLAMA_BASE_URL, GEN_MODEL, GEN_MODEL_ALIAS, GEN_MODEL_PREFER,
+    OLLAMA_BASE_URL, GEN_MODEL, GEN_MODEL_ALIAS, GEN_MODEL_PREFER, GEN_PROVIDER,
     DB_PATH, SUMMARIES_DIR, FINAL_TOP_K, NOTES_DIR, PARSED_DIR, DATA_DIR,
     PAPERS_PDF_DIR, INGEST_POLL_INTERVAL, RAG_ROOT,
     GEN_NUM_CTX, GEN_TEMPERATURE, GEN_TOP_P,
     STYLE_DIR, STYLE_MAX_CHARS,
     EMBED_MODEL_BASE, EMBED_DIM,
+    EMBED_PROVIDER, RERANKER_MODEL, RERANK_PROVIDER,
 )
 from retrieval.embed import load_embed_model, embed_query as _embed_query  # noqa: E402
 from retrieval.rerank import load_reranker  # noqa: E402
@@ -59,6 +60,7 @@ from skills import loader as _skills  # noqa: E402  — progressive skill-pack l
 from skills import style_bank as _style_bank  # noqa: E402  — phrases mined from style samples
 from skills.build_phrasebank_html import render as _render_phrasebank  # noqa: E402
 from retrieval.web_search import web_search as _web_search  # noqa: E402
+from runtime import require_feature, RuntimeDependencyError  # noqa: E402
 import memory as _mem  # noqa: E402
 import citations as _citations  # noqa: E402
 from retrieval.graph import (  # noqa: E402
@@ -372,6 +374,25 @@ _ingest_state: dict = {
 }
 
 
+def _public_ingest_state():
+    state = dict(_ingest_state)
+    try:
+        state['bulk_import'] = json.loads((DATA_DIR / 'import_status.json').read_text())
+    except (OSError, ValueError):
+        pass
+    return state
+
+
+def _embedding_migration_status():
+    path = os.environ.get('RAG_EMBED_MIGRATION_STATUS')
+    if not path:
+        return None
+    try:
+        return json.loads(Path(path).read_text())
+    except (OSError, ValueError):
+        return None
+
+
 def _pdf_slug(stem: str) -> str:
     name = re.sub(r"[^\w\-]", "_", stem)
     name = re.sub(r"_+", "_", name).strip("_")
@@ -611,17 +632,25 @@ def api_status():
 
     # bge-m3 (SentenceTransformer) has no separate tokenizer, so `tok` is None by
     # design — the embedder is `emb`. Checking tok here is what lit the red dot.
-    _tok, emb, _ = _get_models()
+    _tok, emb, rnk = _get_models()
     embed_ok = emb is not None
 
+    from runtime import runtime_report
     return {
         "ollama": ollama_ok, "gen_model": gen_model_ok,
+        "generator_provider": GEN_PROVIDER,
         "embeddings": embed_ok, "index": index_ok,
         "papers": paper_count, "chunks": chunk_count,
-        "ingest": _ingest_state,
+        "ingest": _public_ingest_state(),
         "gen_model_name": resolved_model or "(no model installed)",
         "embed_model_name": EMBED_MODEL_BASE,
         "embed_dim": EMBED_DIM,
+        "embedding_provider": EMBED_PROVIDER,
+        "reranker_model_name": RERANKER_MODEL,
+        "reranker_provider": RERANK_PROVIDER,
+        "reranker_ready": rnk is not None,
+        "embedding_migration": _embedding_migration_status(),
+        "features": runtime_report()["features"],
     }
 
 
@@ -695,6 +724,7 @@ class QueryBody(BaseModel):
     top_k: Optional[int] = None
     images: list[str] = []
     selected_paper_ids: Optional[list[str]] = None
+    library_only: bool = False
     doc_context: Optional[str] = None
     # Skill-backed agents (writing): which manuscript section, and whether we are
     # drafting new prose or reworking `draft_text`.
@@ -765,10 +795,14 @@ def _stream_tokens(query, chunks, agent_id=DEFAULT_AGENT, web_results=None,
 @router.post("/query")
 def api_query(body: QueryBody):
     query = body.query.strip()
+    if body.library_only and not body.selected_paper_ids:
+        raise HTTPException(422, "A graph-scoped question needs at least one selected library paper.")
     agent_id = body.agent or DEFAULT_AGENT
     session_id = body.session_id
     base_url = body.base_url or OLLAMA_BASE_URL
     gen_model = body.gen_model or resolve_gen_model()
+    if not gen_model:
+        raise HTTPException(503, f"{GEN_PROVIDER} is unavailable or has no chat model. Your library and notes remain available.")
     agent = get_agent(agent_id)
     default_top_k = agent.get("top_k", FINAL_TOP_K)
     top_k = min(int(body.top_k or default_top_k), 30)
@@ -798,44 +832,26 @@ def api_query(body: QueryBody):
         qvec = _embed_query(tok, emb, query)
         with ThreadPoolExecutor(max_workers=2) as pool:
             local_fut = pool.submit(_search, query, qvec, rnk, top_k, selected_paper_ids)
-            web_fut = pool.submit(_web_search, query, top_k)
+            web_fut = None if body.library_only else pool.submit(_web_search, query, top_k)
             chunks = local_fut.result()
-            web_results = web_fut.result()
+            web_results = web_fut.result() if web_fut else []
     except Exception as e:
         raise HTTPException(500, str(e))
 
-    # Graph-augmented retrieval
+    # Graph candidates are already filtered, fused, and reranked in search.
+    # This lookup only supplies entity highlights for the UI.
     graph_entities: list[dict] = []
     try:
-        seed_entities = _search_entities(query, limit=10)
-        if seed_entities:
-            expanded = _expand_neighbors([e["entity_id"] for e in seed_entities], hops=1)
-            all_eids = list({e["entity_id"] for e in expanded})
-            extra_chunk_ids = _entity_chunks(all_eids, limit=20)
-            existing_chunk_ids = {c["chunk_id"] for c in chunks}
-            new_cids = [cid for cid in extra_chunk_ids if cid not in existing_chunk_ids]
-            if new_cids:
-                conn = _open_db()
-                conn.row_factory = sqlite3.Row
-                placeholders = ",".join("?" * len(new_cids))
-                extra_rows = conn.execute(
-                    f"SELECT c.chunk_id, c.paper_id, c.text, c.section_name,"
-                    f"       c.page_start, c.page_end, p.title, p.authors, p.year, p.doi, p.journal, p.volume, p.issue, p.pages, p.publisher, p.url"
-                    f" FROM chunks c JOIN papers p USING(paper_id)"
-                    f" WHERE c.chunk_id IN ({placeholders})",
-                    new_cids,
-                ).fetchall()
-                conn.close()
-                for row in extra_rows[:6]:
-                    chunks.append(dict(row))
-            graph_entities = seed_entities[:8]
+        if not body.library_only:
+            graph_entities = _search_entities(query, limit=8)
     except Exception:
         pass
 
     # Memory retrieval
     memories = []
     try:
-        memories = _mem.search_memories(qvec, query, top_k=5)
+        if not body.library_only:
+            memories = _mem.search_memories(qvec, query, top_k=5)
     except Exception:
         pass
 
@@ -1003,6 +1019,8 @@ def api_paper_summarize(id: str = Query(""), force: bool = Query(False)):
     conn = _open_db()
     try:
         summary = summarize_paper(conn, paper_id, force=force)
+        row = conn.execute('SELECT title FROM papers WHERE paper_id=?', (paper_id,)).fetchone()
+        title = row[0] if row else paper_id
     except requests.RequestException as e:
         raise HTTPException(503, f"Model request failed: {e}")
     except Exception as e:
@@ -1013,18 +1031,23 @@ def api_paper_summarize(id: str = Query(""), force: bool = Query(False)):
         raise HTTPException(
             422,
             "Could not generate a summary — the paper text may be too sparse or garbled, "
-            "or no Ollama model is installed.",
+            f"or {GEN_PROVIDER} has no available chat model.",
         )
-    return {"paper_id": paper_id, "summary": summary}
+    return {"paper_id": paper_id, "title": title, "summary": summary}
 
 
 # ── /summaries/build — background pass over papers missing a summary ──────────
 _summary_state: dict = {"running": False, "message": "Idle", "done": 0, "total": 0}
 _summary_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="summarize")
+_summary_build_lock = threading.Lock()
 
 
 def _run_summary_build(force: bool = False) -> None:
+    if not _summary_build_lock.acquire(blocking=False):
+        return
+    conn = None
     try:
+        _summary_state.update(generated=0, skipped=0, failed=0, done=0, total=0)
         if not DB_PATH.exists():
             _summary_state.update({"running": False, "message": "No index yet"})
             return
@@ -1034,7 +1057,7 @@ def _run_summary_build(force: bool = False) -> None:
             rows = conn.execute("SELECT paper_id FROM papers").fetchall()
         else:
             rows = conn.execute(
-                "SELECT paper_id FROM papers WHERE summary IS NULL OR summary = ''"
+                "SELECT paper_id FROM papers WHERE trim(COALESCE(summary,'')) = ''"
             ).fetchall()
         ids = [r[0] for r in rows]
 
@@ -1046,28 +1069,51 @@ def _run_summary_build(force: bool = False) -> None:
 
         if not resolve_gen_model():
             conn.close()
-            _summary_state.update({"running": False, "message": "No Ollama model installed."})
+            _summary_state.update({"running": False, "message": f"{GEN_PROVIDER} has no available chat model."})
             return
 
         _summary_state.update({"running": True, "total": len(ids), "done": 0,
+                               "generated": 0, "skipped": 0, "failed": 0,
                                "message": f"Summarizing {len(ids)} paper(s)…"})
         done = 0
         for pid in ids:
             try:
-                summarize_paper(conn, pid, force=force)
+                summary = summarize_paper(conn, pid, force=force)
+                key = 'generated' if summary else 'skipped'
+                _summary_state[key] += 1
             except Exception as e:
+                conn.rollback()
+                _summary_state['failed'] += 1
                 print(f"[summary] failed for {pid}: {e}")
             done += 1
-            _summary_state.update({"done": done, "message": f"Summarized {done}/{len(ids)}…"})
+            _summary_state.update({"done": done, "message": f"Checked {done}/{len(ids)}: {_summary_state['generated']} generated, {_summary_state['skipped']} skipped, {_summary_state['failed']} failed"})
         conn.close()
-        _summary_state.update({"running": False, "message": f"Done — {len(ids)} summary(ies) ✓"})
+        _summary_state.update({"running": False, "message": f"Last run: {_summary_state['generated']} generated, {_summary_state['skipped']} skipped, {_summary_state['failed']} failed"})
     except Exception as e:
         _summary_state.update({"running": False, "message": f"Summary build error: {e}"})
+    finally:
+        if conn is not None:
+            conn.close()
+        _summary_build_lock.release()
 
 
 @router.get("/summaries/build/status")
 def api_summaries_status():
-    return _summary_state
+    state = dict(_summary_state, available=0, library_total=0, missing=[])
+    if DB_PATH.exists():
+        conn = _open_db()
+        try:
+            _ensure_summary_col(conn)
+            total, available = conn.execute("SELECT count(*),COALESCE(sum(trim(COALESCE(summary,''))!=''),0) FROM papers").fetchone()
+            state.update(library_total=total, available=available)
+            state['missing'] = [dict(paper_id=pid, title=title, status=status or 'pending', reason=reason or 'Not generated yet')
+                for pid, title, status, reason in conn.execute("""SELECT p.paper_id,p.title,a.status,a.error FROM papers p
+                    LEFT JOIN paper_summary_attempts a ON p.paper_id=a.paper_id
+                    WHERE trim(COALESCE(p.summary,''))='' ORDER BY p.title LIMIT 100""")]
+            state['pending'] = total - available
+        finally:
+            conn.close()
+    return state
 
 
 @router.post("/summaries/build")
@@ -1075,6 +1121,7 @@ def api_summaries_build(force: bool = Query(False)):
     """Generate summaries for all papers that lack one (or all, with force=true)."""
     if _summary_state.get("running"):
         raise HTTPException(409, "Summary build already running; wait for it to finish")
+    _summary_state.update(running=True, message='Summary build queued…')
     _summary_executor.submit(_run_summary_build, force)
     return {"status": "started"}
 
@@ -1156,6 +1203,8 @@ def api_paper_delete(paper_id: str):
 
     # knowledge graph
     try:
+        from retrieval.knowledge import remove_paper as remove_research_paper
+        remove_research_paper(paper_id)
         graph_result = _graph_remove_paper(paper_id)
     except Exception as e:
         graph_result = {"error": str(e)}
@@ -1180,6 +1229,10 @@ async def api_papers_upload(files: list[UploadFile] = File(...)):
     them up within ~INGEST_POLL_INTERVAL seconds and indexes them. Returns
     per-file status.
     """
+    try:
+        require_feature("pdf_ingestion")
+    except RuntimeDependencyError as exc:
+        raise HTTPException(503, str(exc)) from exc
     PAPERS_PDF_DIR.mkdir(parents=True, exist_ok=True)
     MAX_BYTES = 200 * 1024 * 1024  # 200 MB per file
     results: list[dict] = []
@@ -1864,14 +1917,14 @@ def api_style_delete(sample_id: str):
 # ── /ingest/status ────────────────────────────────────────────────────────────
 @router.get("/ingest/status")
 def api_ingest_status():
-    return _ingest_state
+    return _public_ingest_state()
 
 
 # ── /ingest/run — trigger an immediate index run ──────────────────────────────
 _ingest_trigger_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ingest-trigger")
 
 
-def _trigger_ingest_once() -> None:
+def _trigger_ingest_once(force: bool = False) -> None:
     """Run parse_pdfs + build_index once, write state. Background-thread safe."""
     if not _index_run_lock.acquire(blocking=False):
         _ingest_state.update({"message": "Index run already in progress — waiting"})
@@ -1887,11 +1940,11 @@ def _trigger_ingest_once() -> None:
         pdf_files = _list_pdf_files()
         new_ids = {_pdf_slug(p.stem) for p in pdf_files} - existing_ids
 
-        if not new_ids:
+        if not new_ids and not force:
             _ingest_state.update({"running": False, "message": f"Up to date ({len(pdf_files)} PDFs)"})
             return
 
-        _ingest_state.update({"running": True, "new_count": len(new_ids),
+        _ingest_state.update({"running": True, "new_count": len(new_ids), "last_returncode": None,
                               "message": f"Manually indexing {len(new_ids)} new paper(s)…"})
 
         def _tail(out: str, err: str, n: int = 180) -> str:
@@ -1916,17 +1969,22 @@ def _trigger_ingest_once() -> None:
         # Generate summaries for the newly indexed papers in the background.
         _summary_executor.submit(_run_summary_build)
     except Exception as e:
-        _ingest_state.update({"running": False, "message": f"Trigger error: {e}"})
+        _ingest_state.update({"running": False, "last_returncode": -1, "message": f"Trigger error: {e}"})
     finally:
         _index_run_lock.release()
 
 
 @router.post("/ingest/run")
-def api_ingest_run():
+def api_ingest_run(force: bool = False):
     """Kick the indexer immediately instead of waiting for the next poll."""
+    try:
+        require_feature("pdf_ingestion")
+    except RuntimeDependencyError as exc:
+        raise HTTPException(503, str(exc)) from exc
     if _ingest_state.get("running"):
         raise HTTPException(409, "Indexer already running; wait for it to finish")
-    _ingest_trigger_executor.submit(_trigger_ingest_once)
+    _ingest_state.update(running=True, last_returncode=None, message='Index run queued…')
+    _ingest_trigger_executor.submit(_trigger_ingest_once, force=force)
     return {"status": "started"}
 
 
@@ -2078,6 +2136,10 @@ class GraphBuild(BaseModel):
 
 @router.post("/graph/build")
 def api_graph_build(body: GraphBuild):
+    try:
+        require_feature("graph_extraction")
+    except RuntimeDependencyError as exc:
+        raise HTTPException(503, str(exc)) from exc
     if _graph_state["running"] and not body.force:
         raise HTTPException(409, "Extraction already running; pass force=true to reset")
     if body.force:
@@ -2246,6 +2308,10 @@ def init_databases() -> None:
     repaired = reconcile_titles(DB_PATH, PAPERS_LIBRARY, PARSED_DIR, MENDELEY_LIBRARY)
     if repaired:
         print(f"[rag] recovered {repaired} paper titles from local metadata")
+    from ingest.metadata import reconcile_authors
+    repaired = reconcile_authors(DB_PATH)
+    if repaired:
+        print(f"[rag] recovered authors for {repaired} papers from PDF bylines")
     _mem.init_db()
     # Keep a searchable, stable-key citation catalog alongside the indexed
     # papers.  Sync is idempotent and preserves the original paper ids.

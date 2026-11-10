@@ -3,6 +3,8 @@
 import sqlite3
 from pathlib import Path
 
+from jfr.equipment import DDL as EQUIPMENT_DDL
+
 DDL = """
 PRAGMA journal_mode=WAL;
 PRAGMA foreign_keys=ON;
@@ -210,6 +212,8 @@ CREATE TABLE IF NOT EXISTS review_note (
 CREATE INDEX IF NOT EXISTS idx_note_paper ON review_note(paper_id);
 """
 
+DDL += EQUIPMENT_DDL
+
 EXPERIMENT_STATUSES = ["planned", "in_progress", "done", "failed", "abandoned"]
 
 TASK_STATUSES  = ["todo", "in_progress", "done"]
@@ -226,13 +230,15 @@ VALID_TRANSITIONS: dict[str, list[str]] = {
     "revision_requested_major":   ["revising", "withdrawn"],
     "revising":                   ["resubmitted", "withdrawn"],
     "resubmitted":                ["under_review", "accepted", "rejected_post_review", "withdrawn"],
-    "accepted":                   [],
+    "accepted":                   ["proofs", "published"],
+    "proofs":                     ["published"],
+    "published":                  [],
     "rejected_desk":              [],
     "rejected_post_review":       [],
     "withdrawn":                  [],
 }
 
-TERMINAL_STATES = {"accepted", "rejected_desk", "rejected_post_review", "withdrawn"}
+TERMINAL_STATES = {"published", "rejected_desk", "rejected_post_review", "withdrawn"}
 
 
 def init_db(db_path: Path) -> sqlite3.Connection:
@@ -240,6 +246,27 @@ def init_db(db_path: Path) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     conn.executescript(DDL)
+    # Additive migrations preserve earlier submissions, review rounds, and keys.
+    for table, additions in {
+        'submission': {
+            'publication_date': 'TEXT', 'publication_doi': 'TEXT',
+            'publication_url': 'TEXT', 'publication_pdf': 'TEXT', 'publication_pdf_name': 'TEXT',
+        },
+        'reviewer_comment': {'is_addressed': 'INTEGER NOT NULL DEFAULT 0'},
+        'submission_transition': {'occurred_on': 'TEXT'},
+    }.items():
+        existing = {row[1] for row in conn.execute(f'PRAGMA table_info({table})')}
+        for name, definition in additions.items():
+            if name not in existing:
+                conn.execute(f'ALTER TABLE {table} ADD COLUMN {name} {definition}')
+                if table == 'submission_transition' and name == 'occurred_on':
+                    # Publication dates were already entered explicitly. Other
+                    # legacy timestamps only tell us when the event was logged.
+                    conn.execute('''UPDATE submission_transition SET occurred_on=(
+                        SELECT publication_date FROM submission s WHERE s.id=submission_id)
+                        WHERE to_state='published' AND EXISTS (
+                        SELECT 1 FROM submission s WHERE s.id=submission_id
+                        AND date(s.publication_date)=s.publication_date)''')
     conn.commit()
     return conn
 

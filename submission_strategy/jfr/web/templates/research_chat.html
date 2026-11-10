@@ -9,11 +9,43 @@
   </button>
 {% endblock %}
 
+{% block head %}
+<style>
+  .chat-panels { min-width: 0; }
+  .chat-panels > * { min-width: 0; min-height: 0; }
+  .chat-controls { flex-wrap: wrap; }
+  .chat-controls select { max-width: 100%; min-width: 0; }
+  .chat-mobile-nav { display: none; }
+  #prompt { min-width: 0; }
+  @media (max-width: 1023px) {
+    .chat-mobile-nav { display: flex; gap: 8px; margin-bottom: 12px; }
+    .chat-mobile-nav button { flex: 1; min-height: 44px; border: 1px solid var(--line); border-radius: 8px; font-size: 14px; }
+    .chat-mobile-nav button[aria-pressed="true"] { background: var(--signal-wash); color: var(--signal-ink); border-color: var(--signal); }
+    #chat-panels { display: block; height: calc(100dvh - 16rem); min-height: 320px; }
+    #chat-panels > * { display: none; height: 100%; width: 100%; }
+    .chat-panels[data-mobile-view="chat"] #chat-main,
+    .chat-panels[data-mobile-view="sessions"] #chat-sessions,
+    .chat-panels[data-mobile-view="sources"] #chat-sources { display: flex; }
+    .chat-controls { padding: 12px; gap: 8px; }
+    .chat-controls select { font-size: 16px; flex: 1 1 135px; }
+    #messages { padding: 16px; }
+    #empty-state { padding-top: 24px; padding-bottom: 24px; }
+    #prompt { font-size: 16px; }
+    #send-btn { min-width: 44px; min-height: 44px; }
+  }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="grid grid-cols-12 gap-5 h-[calc(100vh-13rem)]">
+<div class="chat-mobile-nav" role="group" aria-label="Chat panels">
+  <button type="button" data-chat-panel="chat" aria-controls="chat-main" aria-pressed="true" onclick="setChatPanel('chat')">Chat</button>
+  <button type="button" data-chat-panel="sessions" aria-controls="chat-sessions" aria-pressed="false" onclick="setChatPanel('sessions')">Sessions</button>
+  <button type="button" data-chat-panel="sources" aria-controls="chat-sources" aria-pressed="false" onclick="setChatPanel('sources')">Sources</button>
+</div>
+<div id="chat-panels" data-mobile-view="chat" class="chat-panels grid grid-cols-12 gap-5 h-[calc(100vh-13rem)]">
 
   <!-- ── Session sidebar ────────────────────────────────────── -->
-  <aside class="col-span-3 bg-white dark:bg-ink-900 rounded-xl border border-ink-200 dark:border-ink-800 shadow-soft dark:shadow-soft-dark overflow-hidden flex flex-col">
+  <aside id="chat-sessions" class="col-span-3 bg-white dark:bg-ink-900 rounded-xl border border-ink-200 dark:border-ink-800 shadow-soft dark:shadow-soft-dark overflow-hidden flex flex-col">
     <div class="px-4 py-3 border-b border-ink-200 dark:border-ink-800 flex items-center justify-between">
       <h3 class="font-semibold text-sm">Sessions</h3>
       <span id="session-count" class="text-[11px] text-ink-400 font-mono">—</span>
@@ -24,9 +56,9 @@
   </aside>
 
   <!-- ── Chat area ──────────────────────────────────────────── -->
-  <section class="col-span-6 bg-white dark:bg-ink-900 rounded-xl border border-ink-200 dark:border-ink-800 shadow-soft dark:shadow-soft-dark flex flex-col overflow-hidden">
+  <section id="chat-main" class="col-span-6 bg-white dark:bg-ink-900 rounded-xl border border-ink-200 dark:border-ink-800 shadow-soft dark:shadow-soft-dark flex flex-col overflow-hidden">
     <!-- Agent header -->
-    <div class="px-5 py-3 border-b border-ink-200 dark:border-ink-800 flex items-center gap-3">
+    <div class="chat-controls px-5 py-3 border-b border-ink-200 dark:border-ink-800 flex items-center gap-3">
       <select id="agent-select"
               class="bg-ink-50 dark:bg-ink-800 border border-ink-200 dark:border-ink-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400">
         <option value="">Loading agents…</option>
@@ -76,17 +108,17 @@
         </button>
       </div>
       <div class="text-[10px] text-ink-400 mt-1.5 px-2">
-        Generator: <span class="font-mono" data-gen-label>gemma3:12b</span>
-        <span class="text-ink-300 ml-1">(switch in sidebar ↘)</span>
-        · Retrieval: SPECTER2 + BGE reranker
+        Model: <span class="font-mono" data-gen-label>Auto-selected</span>
+        <span class="text-ink-300 ml-1">(change in menu)</span>
       </div>
     </div>
   </section>
 
   <!-- ── Sources panel ──────────────────────────────────────── -->
-  <aside class="col-span-3 bg-white dark:bg-ink-900 rounded-xl border border-ink-200 dark:border-ink-800 shadow-soft dark:shadow-soft-dark overflow-hidden flex flex-col">
+  <aside id="chat-sources" class="col-span-3 bg-white dark:bg-ink-900 rounded-xl border border-ink-200 dark:border-ink-800 shadow-soft dark:shadow-soft-dark overflow-hidden flex flex-col">
     <div class="border-b border-ink-200 dark:border-ink-800">
       <h3 class="px-4 pt-3 pb-1 font-semibold text-sm">Sources</h3>
+      <div id="graph-scope" class="px-4 py-2 text-xs" hidden><span id="graph-scope-label"></span> <button type="button" onclick="clearGraphScope()" class="underline">Clear scope</button></div>
       <div class="flex gap-0 px-2">
         <button onclick="showSourceTab('papers')" id="tab-papers"
                 class="px-3 py-2 text-xs font-medium border-b-2 transition border-brand-500 text-brand-700 dark:text-brand-300">
@@ -123,6 +155,42 @@ let currentAgent = 'chat';
 let currentManuscriptId = '';
 let isStreaming = false;
 let lastChunks = [];
+let graphPaperScope = null;
+let graphScopeFailed = false;
+
+function clearGraphScope() {
+  graphPaperScope = null;
+  graphScopeFailed = false;
+  document.getElementById('graph-scope').hidden = true;
+}
+
+async function loadGraphScope(params) {
+  if (!params.get('graph_node') && !params.getAll('paper_id').length) return;
+  const badge = document.getElementById('graph-scope');
+  badge.hidden = false;
+  try {
+    if (params.get('graph_node')) {
+      const scope = new URLSearchParams({id:params.get('graph_node')});
+      for (const key of ['q','year_from','year_to']) if(params.has('graph_'+key))scope.set(key,params.get('graph_'+key));
+      const response = await fetch('/api/rag/knowledge/node?'+scope);
+      if (!response.ok) throw new Error('The graph scope is no longer available. Return to the map or clear this scope.');
+      graphPaperScope = (await response.json()).paper_ids;
+    } else graphPaperScope = [...new Set(params.getAll('paper_id'))].slice(0,80);
+    if (!graphPaperScope?.length) throw new Error('No papers match this graph scope. Return to the map or clear this scope.');
+    document.getElementById('graph-scope-label').textContent = `Graph scope: ${graphPaperScope.length} library papers. Web and memory context excluded.`;
+  } catch (error) {
+    graphScopeFailed = true;
+    document.getElementById('graph-scope-label').textContent = error.message;
+  }
+}
+
+function setChatPanel(panel) {
+  if (!['chat', 'sessions', 'sources'].includes(panel)) return;
+  document.getElementById('chat-panels').dataset.mobileView = panel;
+  document.querySelectorAll('[data-chat-panel]').forEach(button => {
+    button.setAttribute('aria-pressed', String(button.dataset.chatPanel === panel));
+  });
+}
 
 // ── Indexed paper count (live, from /api/rag/status) ──────────
 let paperCount = null;
@@ -142,19 +210,23 @@ async function loadPaperCount() {
 }
 
 // ── Init ──────────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', () => {
-  loadAgents();
-  loadSessions();
+document.addEventListener('DOMContentLoaded', async () => {
+  await loadAgents();
+  await loadSessions();
   loadManuscripts();
   loadPaperCount();
   renderExamples();
   // Seed query via ?q=… (used by the graph "Ask LLM" action)
-  const seed = new URLSearchParams(location.search).get('q');
+  const params = new URLSearchParams(location.search);
+  const session = params.get('session');
+  if (session) { await loadSession(session); return; }
+  await loadGraphScope(params);
+  const seed = params.get('q');
   if (seed) {
     document.getElementById('prompt').value = seed;
     autoResize(document.getElementById('prompt'));
     // Defer one tick so the empty state element is in the DOM.
-    setTimeout(() => sendQuery(), 30);
+    if (!graphScopeFailed) setTimeout(() => sendQuery(), 30);
   }
 });
 
@@ -170,6 +242,11 @@ async function loadAgents() {
       o.value = id; o.textContent = (cfg.icon || '') + ' ' + (cfg.name || id);
       if (id === 'chat') o.selected = true;
       sel.appendChild(o);
+    }
+    const requested = new URLSearchParams(location.search).get('agent');
+    if (requested && Object.prototype.hasOwnProperty.call(agents, requested)) {
+      currentAgent = requested;
+      sel.value = requested;
     }
     sel.onchange = () => { currentAgent = sel.value; syncSectionSelect(agents); };
     await loadSections();
@@ -254,7 +331,14 @@ async function loadSession(id) {
     const r = await fetch('/api/rag/sessions/' + encodeURIComponent(id));
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const data = await r.json();
+    clearGraphScope();
     currentSessionId = id;
+    if (data.agent_id && [...document.getElementById('agent-select').options].some(option => option.value === data.agent_id)) {
+      currentAgent = data.agent_id;
+      const selector = document.getElementById('agent-select');
+      selector.value = currentAgent;
+      selector.dispatchEvent(new Event('change'));
+    }
     lastChunks = [];
     const msgs = document.getElementById('messages');
     msgs.innerHTML = '';
@@ -279,6 +363,7 @@ async function loadSession(id) {
     // persist with the conversation (click a turn's "Sources" button for others).
     if (lastSources || lastWeb) showTurnSources(lastSources || [], lastWeb || []);
     loadSessions();
+    setChatPanel('chat');
   } catch (e) {
     toast('Failed to load session: ' + e.message);
   }
@@ -292,6 +377,8 @@ async function deleteSession(id) {
 }
 
 function newChat() {
+  clearGraphScope();
+  setChatPanel('chat');
   currentSessionId = null;
   lastChunks = [];
   document.getElementById('messages').innerHTML = `
@@ -361,6 +448,7 @@ async function sendQuery() {
   const input = document.getElementById('prompt');
   const query = input.value.trim();
   if (!query) return;
+  if (graphScopeFailed) return;
 
   // Clear empty state
   const es = document.getElementById('empty-state');
@@ -379,6 +467,8 @@ async function sendQuery() {
     query,
     agent: currentAgent,
     session_id: currentSessionId,
+    selected_paper_ids: graphPaperScope || undefined,
+    library_only: !!graphPaperScope,
     top_k: parseInt((document.getElementById('topk-select') || {}).value, 10) || 10,
     gen_model: (typeof getActiveModel === 'function' ? getActiveModel() : null) || undefined,
     section: (document.getElementById('section-select') || {}).value || undefined,
@@ -528,7 +618,7 @@ function addTurnSourcesButton(assistantEl, sources, web) {
   const btn = document.createElement('button');
   btn.className = 'turn-sources-btn text-[11px] bg-ink-100 dark:bg-ink-800 hover:bg-brand-100 dark:hover:bg-brand-950 text-ink-600 dark:text-ink-300 px-2.5 py-1 rounded-md';
   btn.textContent = `📎 Sources${n ? ' ' + n : ''}${m ? ' · Web ' + m : ''}`;
-  btn.onclick = () => { showTurnSources(sources, web); showSourceTab(n >= m ? 'papers' : 'web'); };
+  btn.onclick = () => { showTurnSources(sources, web); showSourceTab(n >= m ? 'papers' : 'web'); setChatPanel('sources'); };
   bar.appendChild(btn);
 }
 

@@ -5,7 +5,7 @@ Schema (memory.db):
   sessions   — one row per chat session
   turns      — user / assistant messages within a session
   memories   — extracted research findings (semantic + FTS searchable)
-  memories_vec (vec0) — bge-m3 (1024-dim) embeddings of memories
+  memories_vec (vec0) — configured embedder's vectors (1024-dim by default)
   memories_fts (fts5) — keyword index of memory content
 """
 import json
@@ -17,7 +17,7 @@ from pathlib import Path
 
 import numpy as np
 
-from config import MEMORY_DB_PATH
+from config import MEMORY_DB_PATH, EMBED_DIM
 
 
 # ── DB connection ─────────────────────────────────────────────────────────────
@@ -91,10 +91,10 @@ def init_db() -> None:
 
     # memories_vec — requires sqlite-vec (graceful no-op if unavailable)
     try:
-        conn.execute("""
+        conn.execute(f"""
             CREATE VIRTUAL TABLE IF NOT EXISTS memories_vec USING vec0(
                 memory_id TEXT,
-                embedding FLOAT[1024]
+                embedding FLOAT[{EMBED_DIM}]
             )
         """)
     except Exception:
@@ -102,6 +102,50 @@ def init_db() -> None:
 
     conn.commit()
     conn.close()
+
+
+def repair_vector_index(tokenizer, embed_model) -> int:
+    """Rebuild only derived vectors when the configured dimension changes.
+
+    Compute embeddings before changing the table. A failed model load or
+    encoding leaves every existing vector, memory, and conversation intact.
+    Also backfill text memories whose previous vector insert failed silently.
+    """
+    from retrieval.embed import embed_texts
+    from retrieval.index_identity import profile, read_profile, write_profile
+
+    conn = _open_db()
+    try:
+        schema = conn.execute("SELECT sql FROM sqlite_master WHERE name='memories_vec'").fetchone()
+        match = re.search(r"embedding\s+FLOAT\[(\d+)\]", schema[0] if schema else "", re.IGNORECASE)
+        same_dimension = bool(match and int(match.group(1)) == EMBED_DIM)
+        expected_profile = profile(EMBED_DIM)
+        saved_profile = read_profile(conn)
+        if saved_profile and saved_profile != expected_profile:
+            same_dimension = False
+        rows = conn.execute("SELECT memory_id, content FROM memories ORDER BY memory_id").fetchall()
+        if same_dimension:
+            indexed = {row[0] for row in conn.execute("SELECT memory_id FROM memories_vec")}
+            rows = [row for row in rows if row["memory_id"] not in indexed]
+        if same_dimension and not rows:
+            write_profile(conn, expected_profile)
+            conn.commit()
+            return 0
+        vectors = embed_texts(tokenizer, embed_model, [row["content"] for row in rows])
+        if vectors.shape != (len(rows), EMBED_DIM):
+            raise ValueError(f"Memory embeddings have shape {vectors.shape}; expected {(len(rows), EMBED_DIM)}")
+        conn.execute("BEGIN IMMEDIATE")
+        with conn:
+            if not same_dimension:
+                conn.execute("DROP TABLE IF EXISTS memories_vec")
+                conn.execute(f"CREATE VIRTUAL TABLE memories_vec USING vec0(memory_id TEXT, embedding FLOAT[{EMBED_DIM}])")
+            for row, vector in zip(rows, vectors):
+                conn.execute("INSERT INTO memories_vec(memory_id, embedding) VALUES (?, ?)",
+                             (row["memory_id"], vector.astype(np.float32).tobytes()))
+            write_profile(conn, expected_profile)
+        return len(rows)
+    finally:
+        conn.close()
 
 
 # ── Sessions ──────────────────────────────────────────────────────────────────

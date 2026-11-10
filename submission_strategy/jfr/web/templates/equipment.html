@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+{% block title %}Equipment inventory{% endblock %}
+{% block heading %}Equipment inventory{% endblock %}
+{% block subtitle %}Your instruments, service dates, and vendor history{% endblock %}
+{% block head %}<link rel="stylesheet" href="/static/equipment.css">{% endblock %}
+{% block header_actions %}<a href="/equipment/new" class="toolbar-btn btn-signal">Add equipment</a>{% endblock %}
+{% block content %}
+<div class="eq-summary" aria-label="Inventory summary">
+  <a href="/equipment"><strong>{{ inventory.summary.total }}</strong> equipment records</a>
+  <a href="/equipment?due=now"><strong>{{ inventory.summary.attention }}</strong> due today or overdue</a>
+  <a href="/equipment?due=soon"><strong>{{ inventory.summary.due_soon }}</strong> due within 30 days</a>
+</div>
+<form action="/equipment" method="get" class="eq-filters">
+  <label class="eq-search"><span class="sr-only">Search equipment</span><input type="search" name="q" value="{{ q }}" placeholder="Search name, model, serial, asset tag, or vendor…" maxlength="200"></label>
+  <label><span class="sr-only">Equipment status</span><select name="status"><option value="">All statuses</option>{% for key,label in equipment_statuses.items() %}<option value="{{ key }}" {% if status==key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+  <label><span class="sr-only">Due dates</span><select name="due"><option value="">All dates</option><option value="now" {% if due=='now' %}selected{% endif %}>Due today or overdue</option><option value="overdue" {% if due=='overdue' %}selected{% endif %}>Overdue</option><option value="soon" {% if due=='soon' %}selected{% endif %}>Due within 30 days</option></select></label>
+  <button class="toolbar-btn" type="submit">Filter</button>{% if q or status or due %}<a href="/equipment" class="toolbar-btn">Clear</a>{% endif %}
+</form>
+<div class="eq-grid">
+  {% for item in inventory['items'] %}
+  <a href="/equipment/{{ item.id }}" class="tile tile-flush eq-item">
+    {% if item.photo_id %}<img class="eq-card-photo" src="/equipment/{{ item.id }}/files/{{ item.photo_id }}?thumbnail=true" alt="{{ item.name }}" loading="lazy">
+    {% else %}<div class="eq-card-photo eq-placeholder" aria-hidden="true"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 7h16v14H4V7zm4 0V3h8v4M4 12h16m-11 0v3h6v-3" stroke-width="1.4"/></svg></div>{% endif %}
+    <div class="eq-card-body"><div class="eq-row"><h2 class="font-display">{{ item.name }}</h2><span class="chip {% if item.status=='out_of_service' %}chip-danger{% elif item.status=='maintenance' %}chip-warn{% endif %}">{{ equipment_statuses[item.status] }}</span></div>
+      <p class="eq-meta">{{ [item.manufacturer,item.model] | select | join(' · ') or 'Manufacturer/model not recorded' }}</p>
+      {% if item.asset_tag %}<p class="eq-meta">Asset {{ item.asset_tag }}</p>{% elif item.serial_number %}<p class="eq-meta">Serial {{ item.serial_number }}</p>{% endif %}
+      <p class="eq-meta">{{ item.location or 'Location not recorded' }}</p>
+      {% if item.due_on and item.status!='retired' %}<p class="eq-due {% if item.overdue %}eq-overdue{% endif %}">{{ 'Overdue since' if item.overdue else 'Next action' }} {{ item.due_on }}</p>{% endif %}
+    </div>
+  </a>
+  {% else %}<div class="tile eq-empty"><h2 class="font-display">{{ 'No matching equipment' if q or status or due else 'Start your equipment inventory' }}</h2><p>{{ 'Try a different search or clear the filters.' if q or status or due else 'Add an instrument to keep its details, photos, maintenance, and vendor conversations together.' }}</p>{% if not (q or status or due) %}<a href="/equipment/new" class="toolbar-btn btn-signal">Add your first item</a>{% endif %}</div>{% endfor %}
+</div>
+<nav class="eq-pagination" aria-label="Inventory pages">
+  <span class="eq-meta">{{ inventory.total }} matching records</span>
+  {% if inventory.offset>0 %}<a class="toolbar-btn" href="?{{ {'q':q,'status':status,'due':due,'offset':[0,inventory.offset-inventory.limit]|max}|urlencode }}">← Previous</a>{% endif %}
+  {% if inventory.offset+inventory.limit<inventory.total %}<a class="toolbar-btn" href="?{{ {'q':q,'status':status,'due':due,'offset':inventory.offset+inventory.limit}|urlencode }}">Next →</a>{% endif %}
+</nav>
+{% endblock %}

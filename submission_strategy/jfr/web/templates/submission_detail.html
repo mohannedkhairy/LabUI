@@ -1,244 +1,43 @@
 {% extends "base.html" %}
-{% block title %}Submission {{ sub.id }}{% endblock %}
-{% block heading %}Submission Detail{% endblock %}
-
+{% block title %}{{ sub.manuscript_title }} — workflow{% endblock %}
+{% block heading %}Submission workspace{% endblock %}
+{% block subtitle %}Review, revise, and keep the publication record together{% endblock %}
+{% block header_actions %}<a href="/submissions" class="toolbar-btn">All submissions</a><a href="/publications" class="toolbar-btn">Published papers</a>{% endblock %}
+{% block head %}<link rel="stylesheet" href="/static/submissions.css">{% endblock %}
 {% block content %}
-<!-- Header -->
-<div class="bg-white rounded-xl border border-gray-200 shadow-sm p-6 mb-6">
-  <div class="flex items-start justify-between">
-    <div>
-      <h2 class="text-lg font-semibold text-gray-800">{{ sub.manuscript_title }}</h2>
-      <p class="text-sm text-gray-500 mt-0.5">→ {{ sub.journal_name }}</p>
-      <p class="text-xs font-mono text-gray-400 mt-1">{{ sub.id }}</p>
-    </div>
-    <span class="px-3 py-1 rounded-full font-semibold uppercase text-sm
-      {% if sub.current_state == 'accepted' %}bg-green-100 text-green-700
-      {% elif 'rejected' in sub.current_state %}bg-red-100 text-red-700
-      {% elif sub.current_state == 'withdrawn' %}bg-gray-100 text-gray-500
-      {% elif 'under_review' in sub.current_state %}bg-blue-100 text-blue-700
-      {% elif 'revision' in sub.current_state %}bg-amber-100 text-amber-700
-      {% elif 'supervisor' in sub.current_state %}bg-yellow-100 text-yellow-700
-      {% else %}bg-gray-100 text-gray-600{% endif %}">
-      {{ sub.current_state.replace('_',' ') }}
-    </span>
-  </div>
-
-  <div class="mt-4 flex gap-6 text-xs text-gray-500">
-    <span>Created: <span class="text-gray-700">{{ sub.created_at[:10] }}</span></span>
-    {% if sub.submitted_at %}
-    <span>Submitted: <span class="text-gray-700">{{ sub.submitted_at[:10] }}</span></span>
-    {% endif %}
-    <span>Elapsed: <span class="{% if days_elapsed > 60 %}text-red-600 font-semibold{% elif days_elapsed > 30 %}text-amber-600{% else %}text-gray-700{% endif %}">{{ days_elapsed }}d</span></span>
-  </div>
-</div>
-
-<div class="grid grid-cols-3 gap-6">
-  <!-- Left 2/3: state history + transitions + comments -->
-  <div class="col-span-2 space-y-6">
-
-    <!-- State history -->
-    <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-      <h3 class="text-sm font-semibold text-gray-700 mb-4">State History</h3>
-      <ol class="relative border-l border-gray-200 ml-2 space-y-4">
-        {% for t in sub.transitions %}
-        <li class="ml-4">
-          <div class="absolute -left-1.5 mt-1.5 w-3 h-3 rounded-full border border-white
-            {% if loop.last %}bg-indigo-600{% else %}bg-gray-300{% endif %}"></div>
-          <div class="flex items-baseline gap-2">
-            <span class="font-medium text-gray-800 text-sm">{{ t.to_state.replace('_',' ') }}</span>
-            <span class="text-xs text-gray-400">{{ t.transitioned_at[:16].replace('T',' ') }}</span>
-          </div>
-          {% if t.from_state %}
-          <p class="text-xs text-gray-400">from: {{ t.from_state.replace('_',' ') }}</p>
-          {% endif %}
-          {% if t.notes %}
-          <p class="text-xs text-gray-500 mt-0.5 italic">{{ t.notes }}</p>
-          {% endif %}
-        </li>
-        {% endfor %}
-      </ol>
-    </div>
-
-    <!-- Advance state -->
-    {% if allowed_transitions %}
-    <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-      <h3 class="text-sm font-semibold text-gray-700 mb-4">Advance State</h3>
-      <form method="POST" action="/submissions/{{ sub.id }}/transition" class="space-y-3">
-        <div>
-          <label class="block text-xs font-medium text-gray-600 mb-1">Next state</label>
-          <select name="to_state"
-                  class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-            {% for s in allowed_transitions %}
-            <option value="{{ s }}">{{ s.replace('_',' ') }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        <div>
-          <label class="block text-xs font-medium text-gray-600 mb-1">Notes <span class="text-gray-400 font-normal">(optional)</span></label>
-          <textarea name="notes" rows="2"
-                    placeholder="e.g. Received minor revision request from editor…"
-                    class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"></textarea>
-        </div>
-        <button type="submit"
-                class="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2 rounded-lg">
-          Record Transition
-        </button>
-      </form>
-    </div>
-    {% else %}
-    <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-6 text-center text-gray-400 text-sm">
-      This submission has reached a terminal state.
-    </div>
-    {% endif %}
-
-    <!-- Reviewer comments -->
-    <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-      <h3 class="text-sm font-semibold text-gray-700 mb-4">Reviewer Comments</h3>
-
-      {% if sub.reviewer_comments %}
-      <div class="space-y-3 mb-5">
-        {% for c in sub.reviewer_comments %}
-        <div x-data="{ editing: false }" class="border border-gray-100 rounded-lg overflow-hidden">
-
-          <!-- Display mode -->
-          <div x-show="!editing" class="p-4">
-            <div class="flex items-center justify-between mb-2">
-              <div class="flex items-center gap-3">
-                <span class="text-xs font-semibold text-gray-600 bg-gray-100 px-2 py-0.5 rounded">
-                  Round {{ c.round }} · Reviewer {{ c.reviewer_number }}
-                </span>
-                <span class="text-xs text-gray-400">{{ c.received_at[:10] }}</span>
-              </div>
-              <button @click="editing = true"
-                      class="text-xs text-indigo-500 hover:text-indigo-700 hover:underline flex-shrink-0">
-                Edit
-              </button>
-            </div>
-            <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{{ c.comment_text }}</p>
-            {% if c.response_text %}
-            <div class="mt-3 border-t border-gray-50 pt-3">
-              <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Your response</p>
-              <p class="text-sm text-gray-600 whitespace-pre-wrap leading-relaxed italic">{{ c.response_text }}</p>
-            </div>
-            {% endif %}
-          </div>
-
-          <!-- Edit mode -->
-          <div x-show="editing" x-cloak class="p-4 bg-amber-50 border-t border-amber-100">
-            <form method="POST" action="/submissions/{{ sub.id }}/comments/{{ c.id }}/edit"
-                  class="space-y-3">
-              <div class="flex gap-3">
-                <div class="flex-1">
-                  <label class="block text-xs font-medium text-gray-600 mb-1">Round</label>
-                  <input type="number" name="review_round" value="{{ c.round }}" min="1" max="10"
-                         class="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400">
-                </div>
-                <div class="flex-1">
-                  <label class="block text-xs font-medium text-gray-600 mb-1">Reviewer #</label>
-                  <input type="number" name="reviewer_number" value="{{ c.reviewer_number }}" min="1" max="10"
-                         class="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400">
-                </div>
-                <div class="flex-1">
-                  <label class="block text-xs font-medium text-gray-600 mb-1">Received</label>
-                  <input type="date" name="received_at" value="{{ c.received_at[:10] }}"
-                         class="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400">
-                </div>
-              </div>
-              <div>
-                <label class="block text-xs font-medium text-gray-600 mb-1">Reviewer comment</label>
-                <textarea name="comment_text" rows="5" required
-                          class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 resize-y">{{ c.comment_text }}</textarea>
-              </div>
-              <div>
-                <label class="block text-xs font-medium text-gray-600 mb-1">Your response <span class="text-gray-400 font-normal">(optional — for your records)</span></label>
-                <textarea name="response_text" rows="4"
-                          placeholder="Draft your point-by-point response here…"
-                          class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 resize-y">{{ c.response_text or '' }}</textarea>
-              </div>
-              <div class="flex gap-2">
-                <button type="submit"
-                        class="bg-amber-500 hover:bg-amber-600 text-white text-xs font-medium px-4 py-1.5 rounded-lg">
-                  Save changes
-                </button>
-                <button type="button" @click="editing = false"
-                        class="text-gray-500 hover:text-gray-700 text-xs font-medium px-4 py-1.5 rounded-lg border border-gray-200">
-                  Cancel
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-        {% endfor %}
-      </div>
-      {% else %}
-      <p class="text-sm text-gray-400 mb-5">No reviewer comments recorded yet.</p>
-      {% endif %}
-
-      <div class="border-t border-gray-100 pt-5">
-        <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Add Comment</p>
-        <form method="POST" action="/submissions/{{ sub.id }}/comments" class="space-y-3">
-          <div class="flex gap-3">
-            <div class="flex-1">
-              <label class="block text-xs font-medium text-gray-600 mb-1">Round</label>
-              <input type="number" name="review_round" value="1" min="1" max="10"
-                     class="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-            </div>
-            <div class="flex-1">
-              <label class="block text-xs font-medium text-gray-600 mb-1">Reviewer #</label>
-              <input type="number" name="reviewer_number" value="1" min="1" max="10"
-                     class="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-            </div>
-          </div>
-          <div>
-            <label class="block text-xs font-medium text-gray-600 mb-1">Comment text</label>
-            <textarea name="comment_text" rows="5" required
-                      placeholder="Paste reviewer comment here…"
-                      class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-y"></textarea>
-          </div>
-          <button type="submit"
-                  class="bg-gray-700 hover:bg-gray-800 text-white text-sm font-medium px-4 py-2 rounded-lg">
-            Save Comment
-          </button>
-        </form>
-      </div>
-    </div>
-  </div>
-
-  <!-- Right 1/3: journal + manuscript info -->
-  <div class="space-y-4">
-    <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-      <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Journal</p>
-      <p class="font-semibold text-gray-800">{{ journal.name }}</p>
-      <p class="text-xs text-gray-500 mt-1">{{ journal.publisher }}</p>
-      {% if journal.impact_factor %}
-      <p class="text-xs text-gray-500 mt-1">IF {{ "%.1f" | format(journal.impact_factor) }}</p>
-      {% endif %}
-      {% if journal.issn_print %}
-      <p class="text-xs text-gray-400 mt-1 font-mono">ISSN {{ journal.issn_print }}</p>
-      {% endif %}
-      {% if journal.submission_url %}
-      <a href="{{ journal.submission_url }}" target="_blank"
-         class="text-xs text-indigo-500 hover:underline mt-3 block">Submission portal →</a>
-      {% endif %}
-    </div>
-
-    <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-      <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Manuscript</p>
-      <p class="text-sm font-semibold text-gray-800">{{ manuscript.title }}</p>
-      <p class="text-xs text-gray-600 mt-2 leading-relaxed">{{ manuscript.principal_claim }}</p>
-      <div class="flex flex-wrap gap-1 mt-3">
-        {% set techs = manuscript.techniques_json | from_json %}
-        {% for t in techs[:5] %}
-        <span class="bg-indigo-50 text-indigo-700 text-xs px-1.5 py-0.5 rounded">{{ t }}</span>
-        {% endfor %}
-      </div>
-      <div class="mt-3 flex gap-3">
-        <a href="/recommend?ms={{ manuscript.id }}"
-           class="text-xs text-indigo-500 hover:underline">Recommend →</a>
-        <a href="/submissions?ms={{ manuscript.id }}"
-           class="text-xs text-gray-400 hover:underline">All submissions</a>
-      </div>
-    </div>
+{% set transition_values = transition_values|default({}) %}
+<div class="pub-stack">
+  <section class="pub-card"><div class="pub-row"><div><div class="pub-kicker">{{ sub.journal_name }}</div><h2>{{ sub.manuscript_title }}</h2></div><span class="pub-badge current">{{ workflow.label }}</span></div><div class="pub-row" style="margin-top:12px"><p class="pub-muted">{% if workflow.started_on %}History starts {{ workflow.started_on }}{% else %}Record created {{ sub.created_at[:10] }}{% endif %}{% if sub.submitted_at %} · Submitted {{ sub.submitted_at[:10] }}{% endif %}</p><a class="pub-link" href="/submissions?ms={{ manuscript.id }}">All journal attempts for this manuscript</a></div></section>
+  {% include "_publication_path.html" %}
+  <div class="pub-layout">
+    <main class="pub-stack">
+      <section class="pub-card" id="next-step"><div class="pub-kicker">{{ 'Saved outcome' if workflow.closed else 'Next step' }}</div><h3>{{ workflow.label }}{% if sub.current_state in ['under_review','revision_requested_minor','revision_requested_major','revising','resubmitted'] %} · Round {{ workflow.round }}{% endif %}</h3><p class="pub-muted">{{ workflow.hint }}</p>{% if transition_error %}<div class="pub-notice pub-error" role="alert" style="margin-top:12px">{{ transition_error }}</div>{% endif %}
+        {% if sub.current_state == 'revising' %}<div class="pub-progress"><span style="width:{{ workflow.response_percent }}%"></span></div><p class="pub-muted">{{ workflow.addressed }} of {{ workflow.total }} comments addressed in round {{ workflow.round }}.</p>{% if workflow.pending %}<div class="pub-notice" style="margin-top:12px">{{ workflow.pending }} comment{{ '' if workflow.pending == 1 else 's' }} still {{ 'needs' if workflow.pending == 1 else 'need' }} a response and an addressed check. <a class="pub-link" href="#reviewer-comments">Go to reviewer comments</a>.</div>{% endif %}{% endif %}
+        {% if primary_actions or other_actions %}<form method="post" action="/submissions/{{ sub.id }}/transition" class="pub-form" style="margin-top:18px"><div><label for="transition-date">Date of this event</label><input id="transition-date" type="date" name="occurred_on" value="{{ transition_values.get('occurred_on', today) }}" required><p class="pub-muted" style="font-size:11px;margin-top:5px">Use the actual date for a historical decision or submission.</p></div><div><label for="transition-notes">Decision or progress notes</label><textarea id="transition-notes" name="notes" rows="2" placeholder="What changed, or what did the editor decide?">{{ transition_values.get('notes', '') }}</textarea></div><div class="pub-actions">{% for state in primary_actions %}<button class="pub-button primary" type="submit" name="to_state" value="{{ state }}" {% if state == 'resubmitted' and not workflow.can_resubmit %}disabled title="Address the remaining comments first"{% endif %}>{{ state_actions[state] }}</button>{% endfor %}{% if workflow.can_publish %}<a class="pub-button primary" href="#publication-record">Record publication</a>{% endif %}</div>{% if other_actions %}<details class="pub-outcome"><summary>Other journal outcomes</summary><div class="pub-actions">{% for state in other_actions %}<button class="pub-button" type="submit" name="to_state" value="{{ state }}">{{ state_actions[state] }}</button>{% endfor %}</div></details>{% endif %}</form>{% endif %}
+        {% if sub.current_state == 'proofs' %}<a class="pub-button primary" href="#publication-record" style="margin-top:16px">Record publication</a>{% endif %}
+        {% if sub.current_state == 'published' %}<a class="pub-button primary" href="/publications" style="margin-top:16px">View published papers</a>{% endif %}
+      </section>
+      <section class="pub-card" id="reviewer-comments"><div class="pub-row"><h3>Reviewer comments & responses</h3><span class="pub-badge">Round {{ workflow.round }}</span></div>
+        {% for review in workflow.rounds %}<div style="margin-top:18px"><div class="pub-row"><div class="pub-kicker">Round {{ review.number }}</div><span class="pub-muted">{{ review.addressed }} / {{ review.total }} addressed</span></div><div class="pub-stack" style="gap:12px;margin-top:8px">{% for c in review.comments %}<article class="pub-review {{ 'addressed' if c.is_addressed else '' }}" data-comment-id="{{ c.id }}"><div class="pub-row"><strong style="font-size:13px">Reviewer {{ c.reviewer_number }}</strong><span class="pub-badge {{ 'success' if c.is_addressed else 'warning' }}">{{ 'Addressed' if c.is_addressed else 'Open' }}</span></div><p>{{ c.comment_text }}</p>{% if c.response_text %}<p class="pub-response"><strong>Your response</strong><br>{{ c.response_text }}</p>{% endif %}<details class="pub-editor"><summary>{{ 'Edit comment or response' if c.response_text else 'Write response and mark addressed' }}</summary><form method="post" action="/submissions/{{ sub.id }}/comments/{{ c.id }}/edit" class="pub-form"><div class="pub-fields"><div><label>Round</label><input type="number" name="review_round" min="1" max="{{ workflow.round }}" value="{{ c.round }}" required></div><div><label>Reviewer number</label><input type="number" name="reviewer_number" min="1" value="{{ c.reviewer_number }}" required></div></div><div><label>Comment</label><textarea name="comment_text" rows="3" required>{{ c.comment_text }}</textarea></div><div><label>Your response</label><textarea name="response_text" rows="4" placeholder="Explain the change and where it appears in the revised manuscript.">{{ c.response_text or '' }}</textarea></div><label class="pub-checkbox"><input type="checkbox" name="is_addressed" value="true" {% if c.is_addressed %}checked{% endif %}><span>I have made the change and completed the response.</span></label><button class="pub-button primary" type="submit">Save response</button></form></details></article>{% endfor %}</div></div>{% else %}<p class="pub-muted">No reviewer comments yet. Add the feedback for this round to track each change and response.</p>{% endfor %}
+        <details class="pub-editor" {% if not sub.reviewer_comments %}open{% endif %}><summary>Add reviewer comment</summary><form method="post" action="/submissions/{{ sub.id }}/comments" class="pub-form"><div class="pub-fields"><div><label for="comment-round">Review round</label><input id="comment-round" type="number" name="review_round" min="1" max="{{ workflow.round }}" value="{{ workflow.round }}" required></div><div><label for="comment-reviewer">Reviewer number</label><input id="comment-reviewer" type="number" name="reviewer_number" min="1" value="1" required></div></div><div><label for="comment-text">Requested change or reviewer feedback</label><textarea id="comment-text" name="comment_text" rows="4" required></textarea></div><button class="pub-button" type="submit">Add comment to this round</button></form></details>
+      </section>
+    </main>
+    <aside class="pub-stack">
+      <section class="pub-card {{ 'pub-publication' if sub.current_state == 'published' else '' }}" id="publication-record"><div class="pub-kicker">Final paper</div><h3>{{ 'Published paper' if sub.current_state == 'published' else 'Publication record' }}</h3>
+        {% if workflow.can_publish %}{% if sub.publication_pdf %}<a class="pub-link" href="/submissions/{{ sub.id }}/published.pdf" target="_blank" rel="noopener">Open {{ sub.publication_pdf_name or 'final PDF' }}</a>{% endif %}<form method="post" action="/submissions/{{ sub.id }}/publication" enctype="multipart/form-data" class="pub-form" style="margin-top:14px"><div><label for="publication-date">Publication date</label><input id="publication-date" type="date" name="publication_date" value="{{ sub.publication_date or today }}" required></div><div><label for="publication-doi">DOI</label><input id="publication-doi" name="doi" value="{{ sub.publication_doi or '' }}" placeholder="10.1234/example"></div><div><label for="publication-url">Publication link</label><input id="publication-url" type="url" name="url" value="{{ sub.publication_url or '' }}" placeholder="https://..."></div><div><label for="publication-pdf">Final PDF</label><input id="publication-pdf" type="file" name="pdf" accept="application/pdf,.pdf"><p class="pub-muted" style="font-size:11px;margin-top:6px">Optional, up to 50 MB. An existing PDF is kept unless you upload another.</p></div><p class="pub-muted">Provide a DOI, a link, or the final PDF. This saves your record in LabUI.</p><button class="pub-button primary" type="submit">{{ 'Update publication record' if sub.current_state == 'published' else 'Save published paper' }}</button></form>{% else %}<p class="pub-muted">After the journal accepts the manuscript, add its publication date, DOI or link, and final PDF here.</p>{% endif %}
+      </section>
+      {% include "_submission_timeline.html" %}
+      <section class="pub-card"><div class="pub-kicker">Journal</div><h3>{{ journal.name }}</h3><p class="pub-muted">{{ journal.publisher }}{% if journal.impact_factor %} · IF {{ '%.1f'|format(journal.impact_factor) }}{% endif %}</p>{% if journal.submission_url %}<a href="{{ journal.submission_url }}" class="pub-link" target="_blank" rel="noopener">Open journal portal</a>{% endif %}<hr class="pub-divider"><a class="pub-link" href="/manuscripts/{{ manuscript.id }}/edit">Edit manuscript details</a></section>
+    </aside>
   </div>
 </div>
 {% endblock %}
+{% block scripts %}<script>
+const pathScroll = document.getElementById('publication-path-scroll');
+const currentStage = pathScroll && pathScroll.querySelector('[data-status="current"]');
+if (currentStage && pathScroll.scrollWidth > pathScroll.clientWidth) {
+  pathScroll.scrollLeft = currentStage.getBoundingClientRect().left - pathScroll.getBoundingClientRect().left + pathScroll.scrollLeft - pathScroll.clientWidth / 2 + 43;
+}
+const dateError = document.querySelector('#timeline [role="alert"], #next-step [role="alert"]');
+if (dateError) dateError.scrollIntoView({block: 'center'});
+</script>{% endblock %}

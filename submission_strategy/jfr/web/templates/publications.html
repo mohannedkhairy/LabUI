@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Published papers{% endblock %}
+{% block heading %}Published papers{% endblock %}
+{% block subtitle %}The final paper, with the review journey that brought it here{% endblock %}
+{% block header_actions %}<a href="/submissions" class="toolbar-btn">Submission workspace</a>{% endblock %}
+{% block head %}<link rel="stylesheet" href="/static/submissions.css">{% endblock %}
+{% block content %}
+<div class="pub-stack">
+  <section class="pub-card"><div class="pub-row"><h2>{{ publications|length }} published paper{{ '' if publications|length == 1 else 's' }}</h2><span class="pub-badge success">Publication archive</span></div><p class="pub-muted" style="margin-top:8px">After acceptance and any proofs, record the publication date and add a DOI, a publication link, or the final PDF from the manuscript’s timeline.</p></section>
+  {% for paper in publications %}
+  <article class="pub-card pub-publication">
+    <div class="pub-kicker">{{ paper.journal_name }} · Published {{ paper.publication_date }}</div>
+    <h2>{{ paper.manuscript_title }}</h2>
+    {% if paper.publication_doi %}<p class="pub-muted">DOI: <a class="pub-link" href="https://doi.org/{{ paper.publication_doi|urlencode }}" target="_blank" rel="noopener">{{ paper.publication_doi }}</a></p>{% endif %}
+    <div class="pub-actions">
+      {% if paper.publication_url %}<a class="pub-button" href="{{ paper.publication_url }}" target="_blank" rel="noopener">Publication page ↗</a>{% endif %}
+      {% if paper.publication_pdf %}<a class="pub-button" href="/submissions/{{ paper.id }}/published.pdf" target="_blank" rel="noopener">Read final PDF</a>{% endif %}
+      <a class="pub-button primary" href="/submissions/{{ paper.id }}">Full review timeline →</a>
+    </div>
+  </article>
+  {% else %}<section class="pub-card pub-empty">Your published papers will appear here when their journal attempts reach Publication.<br><a class="pub-button primary" href="/submissions">Open submission workspace</a></section>{% endfor %}
+</div>
+{% endblock %}

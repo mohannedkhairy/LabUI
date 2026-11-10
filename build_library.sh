@@ -27,9 +27,10 @@ LOG="$APPS_ROOT/build_library.log"
 
 if [ ! -x "$VENV/bin/python" ]; then
   echo "ERROR: venv not found at $VENV." >&2
-  echo "       Create it first:  cd $JFR_ROOT && python3.12 -m venv .venv && source .venv/bin/activate && pip install -e ." >&2
+  echo "       Create it first: ./setup.sh" >&2
   exit 1
 fi
+"$VENV/bin/python" "$APPS_ROOT/tools/check_runtime.py"
 
 # Summaries need Ollama; warn (don't fail) so parse/index/repair still run.
 if ! curl -fs --max-time 3 "${OLLAMA_URL}/api/tags" >/dev/null 2>&1; then

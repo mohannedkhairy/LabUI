@@ -1,4 +1,11 @@
 <!DOCTYPE html>
+{% if workspace is not defined %}
+  {% import '_workspace_compatibility.html' as compatibility with context %}
+  {% set workspace = compatibility.workspace %}
+  {% set workspaces = compatibility.workspaces %}
+  {% set workspace_navigation = compatibility.workspace_navigation %}
+  {% set workspace_commands = compatibility.workspace_commands %}
+{% endif %}
 <html lang="en" class="h-full">
 <head>
   <meta charset="UTF-8">
@@ -14,8 +21,7 @@
     window.LABUI_APPEARANCE = {{ appearance | tojson }};
     (function () {
       const root = document.documentElement, A = window.LABUI_APPEARANCE;
-      let get = () => null;
-      try { get = (k) => localStorage.getItem(k); } catch (e) { /* storage blocked */ }
+      const get = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
       try {
         const mode = get('labui-theme');                    // 'dark' | 'light' | null = system
         const dark = mode ? mode === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
@@ -524,8 +530,9 @@
        pair component classes with utilities (`tile tile-flush p-5`) and expect
        the utility to win. -->
   <link rel="stylesheet" href="/static/app.css">
+  <link rel="stylesheet" href="/static/workspaces.css">
 </head>
-<body class="h-full font-sans">
+<body class="h-full font-sans" data-workspace="{{ workspace.id }}">
 
 <div class="h-full p-2 sm:p-3 lg:p-4">
 <div class="app-shell flex h-full">
@@ -536,7 +543,7 @@
   <aside id="app-sidebar" class="relative w-[228px] flex flex-col flex-shrink-0 border-r"
          style="border-color: var(--line)">
     <!-- Brand: two bubbles at rest -->
-    <a href="/" class="px-5 pt-5 pb-5 flex items-center gap-3 group">
+    <a href="{{ workspace.home }}" class="px-5 pt-5 pb-5 flex items-center gap-3 group">
       <div class="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
            style="background: var(--ink)" title="LabUI">
         <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -548,7 +555,7 @@
       <div class="min-w-0">
         <div class="font-display text-[17px] leading-none tracking-tight"
              style="color: var(--ink); font-variation-settings: 'SOFT' 0, 'WONK' 1, 'opsz' 40">LabUI</div>
-        <div class="eyebrow mt-1">Bench · Lit · Pubs</div>
+        <div class="eyebrow mt-1">Your research workbench</div>
       </div>
     </a>
     <button type="button" class="lg:hidden absolute top-4 right-3 p-2 rounded-md"
@@ -558,47 +565,7 @@
       </svg>
     </button>
 
-    {% set workspace_nav = [
-      ('/',             'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6', 'Dashboard'),
-      ('/plan',         'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2zM9 15l2 2 4-4', 'Planner'),
-      ('/write',        'M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25', 'Write'),
-      ('/manuscripts',  'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', 'Manuscripts'),
-      ('/recommend',    'M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z', 'Recommend'),
-      ('/submissions',  'M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z', 'Submissions'),
-      ('/journals',     'M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253', 'Journals'),
-    ] %}
-
-    {% set lab_nav = [
-      ('/research/chat',   'M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z', 'Chat with Papers'),
-      ('/research/search', 'M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z', 'Paper Search'),
-      ('/library', 'M3 7h7l2-3h9v16H3V7z', 'Library'),
-      ('/review', 'M12 3v18m-9-2V5h18v14H3z', 'Paper Review'),
-      ('/research/graph',  'M13 10V3L4 14h7v7l9-11h-7z', 'Knowledge Graph'),
-      ('/research/memory', 'M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4', 'Memory'),
-      ('/research/notes',  'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4', 'Notes'),
-      ('/research/style',  'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z', 'Writing Style'),
-    ] %}
-
-    {% macro nav_link(href, icon_d, label) %}
-      {% set active = request.url.path == href or (href != '/' and request.url.path.startswith(href)) %}
-      <a href="{{ href }}" class="nav-link{% if active %} active{% endif %}">
-        <svg class="w-[17px] h-[17px] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="{{ icon_d }}"/>
-        </svg>
-        <span>{{ label }}</span>
-      </a>
-    {% endmacro %}
-
-    <nav class="flex-1 overflow-y-auto scroll-thin px-3 pb-2 space-y-5">
-      <div>
-        <div class="nav-section px-3 mb-2">Workspace</div>
-        <div class="space-y-0.5">{% for href, icon, label in workspace_nav %}{{ nav_link(href, icon, label) }}{% endfor %}</div>
-      </div>
-      <div>
-        <div class="nav-section px-3 mb-2">Research Lab</div>
-        <div class="space-y-0.5">{% for href, icon, label in lab_nav %}{{ nav_link(href, icon, label) }}{% endfor %}</div>
-      </div>
-    </nav>
+    {% include "_workspace_navigation.html" %}
 
     <!-- Command hint -->
     <button onclick="cmdkOpen()"
@@ -614,8 +581,9 @@
     <!-- Status footer -->
     <div class="px-4 pt-3 pb-4 text-[11px] space-y-2" id="status-footer"
          style="color: var(--ink-muted); border-top: 1px solid var(--line)">
-      <div class="flex items-center justify-between" title="Ollama API">
-        <span class="flex items-center gap-2"><span class="status-dot" id="dot-ollama"></span>Ollama</span>
+      {% if workspace.id == "research" %}
+      <div class="flex items-center justify-between" title="Generator connection">
+        <span class="flex items-center gap-2"><span class="status-dot" id="dot-ollama"></span><span id="generator-provider">Generator</span></span>
         <div x-data="{open: false}" @click.outside="open = false" class="relative">
           <button @click="open = !open; if (open) refreshModelDropdown();"
                   class="font-mono text-[10px] flex items-center gap-1 px-1 py-0.5 rounded transition"
@@ -652,6 +620,11 @@
         <span class="flex items-center gap-2"><span class="status-dot" id="dot-index"></span>Index</span>
         <span id="lbl-papers" class="font-mono text-[10px]" style="color: var(--ink-faint)">—</span>
       </div>
+      <div class="flex items-center justify-between" title="Passage reranking model">
+        <span class="flex items-center gap-2"><span class="status-dot" id="dot-rerank"></span>Reranker</span>
+        <span id="lbl-rerank" class="font-mono text-[10px] truncate max-w-[110px]" style="color: var(--ink-muted)">—</span>
+      </div>
+      {% endif %}
       <div class="relative flex items-center justify-between gap-2 pt-2 mt-1" style="border-top: 1px solid var(--line)"
            x-data="{ open: false }" @click.outside="open = false" @keydown.escape.window="open = false">
         <a href="/api/docs" class="transition" style="color: var(--ink-faint)"
@@ -738,6 +711,7 @@
         </svg>
       </button>
       <div class="min-w-0 flex-1">
+        <a class="workspace-breadcrumb" href="{{ workspace.home }}">{{ workspace.name }}</a>
         <h1 id="page-title" class="text-[24px] sm:text-[30px] leading-[1.1]" style="color: var(--ink)">{% block heading %}{% endblock %}</h1>
         <p class="text-[13px] mt-1.5" style="color: var(--ink-muted)">{% block subtitle %}{% endblock %}</p>
       </div>
@@ -755,13 +729,13 @@
   <div id="cmdk-scrim" onclick="cmdkClose()"></div>
   <div id="cmdk-panel">
     <input id="cmdk-input" type="text" autocomplete="off" spellcheck="false"
-           placeholder="Go to a page, search your library, start writing…">
+           placeholder="Search pages, papers, tasks, and writing projects…">
     <div id="cmdk-list"></div>
     <div id="cmdk-foot">
       <span><kbd>↑</kbd><kbd>↓</kbd> move</span>
       <span><kbd>⏎</kbd> open</span>
       <span><kbd>esc</kbd> close</span>
-      <span style="margin-left:auto" id="cmdk-hint">type to search papers</span>
+      <span style="margin-left:auto" id="cmdk-hint">type to search your work</span>
     </div>
   </div>
 </div>
@@ -865,7 +839,7 @@
     const root = document.documentElement;
     const apply = () => {
       const isDark = root.classList.toggle('dark');
-      localStorage.setItem('labui-theme', isDark ? 'dark' : 'light');
+      LS.set('labui-theme', isDark ? 'dark' : 'light');
       window.dispatchEvent(new CustomEvent('labui-theme-changed',
         { detail: { theme: isDark ? 'dark' : 'light' } }));
       markAppearance();
@@ -877,7 +851,7 @@
   }
   try {
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
-      if (!localStorage.getItem('labui-theme')) {
+      if (!LS.get('labui-theme')) {
         document.documentElement.classList.toggle('dark', e.matches);
       }
     });
@@ -896,50 +870,73 @@
         el.classList.add(ok === true ? 'ok' : (ok === 'warn' ? 'warn' : 'err'));
       };
       setDot('dot-ollama', s.ollama && s.gen_model);
+      const provider = document.getElementById('generator-provider');
+      if (provider) provider.textContent = s.generator_provider || 'Generator';
       setDot('dot-embed',  s.embeddings);
       setDot('dot-index',  s.index);
+      if (s.reranker_ready !== undefined) setDot('dot-rerank', s.reranker_ready);
+      const rankLabel = document.getElementById('lbl-rerank');
+      if (rankLabel && s.reranker_model_name) {
+        rankLabel.textContent = s.reranker_model_name.split('/').pop();
+        rankLabel.title = `${s.reranker_model_name} · ${s.reranker_provider === 'lmstudio' ? 'LM Studio' : 'Local'}`;
+      }
       if (s.gen_model_name) window.labuiDefaultModel = s.gen_model_name;
       updateActiveModelLabel();
       const e = document.getElementById('lbl-embed');
-      if (e && s.embed_model) e.textContent = String(s.embed_model).split('/').pop();
+      const embeddingName = s.embed_model_name || s.embed_model;
+      if (e) {
+        e.textContent = embeddingName ? String(embeddingName).split('/').pop() : (s.embeddings ? 'Ready' : 'Not ready');
+        e.title = embeddingName ? `${embeddingName}${s.embed_dim ? ' · ' + s.embed_dim + ' dimensions' : ''} · ${s.embedding_provider === 'lmstudio' ? 'LM Studio' : 'Local'} · Active index model; changing it requires rebuilding vectors.` : 'Embedding status';
+        e.style.color = s.embeddings ? 'var(--ink-muted)' : 'var(--ink-faint)';
+      }
       const p = document.getElementById('lbl-papers');
       if (p && s.papers != null) p.textContent = s.papers + ' papers';
     } catch (e) { /* offline is fine; dots stay grey */ }
   }
-  refreshStatus();
-  setInterval(refreshStatus, 30000);
+  if (document.getElementById('dot-ollama') || document.querySelector('[data-gen-label]')) {
+    refreshStatus();
+    setInterval(refreshStatus, 30000);
+  }
 
   // ── Model picker ─────────────────────────────────────────────────
   window.labuiModels = [];
   window.labuiDefaultModel = null;
+  window.labuiModelOverride = LS.get('labui-gen-model');
+  window.labuiModelError = '';
 
   function getActiveModel() {
-    return localStorage.getItem('labui-gen-model') || window.labuiDefaultModel || '';
+    return window.labuiModelOverride || window.labuiDefaultModel || '';
   }
   function setActiveModel(name) {
-    localStorage.setItem('labui-gen-model', name);
+    window.labuiModelOverride = name;
+    LS.set('labui-gen-model', name);
     updateActiveModelLabel();
     window.dispatchEvent(new CustomEvent('labui-model-changed', { detail: { model: name } }));
   }
   function clearActiveModelOverride() {
-    localStorage.removeItem('labui-gen-model');
+    window.labuiModelOverride = null;
+    LS.set('labui-gen-model', null);
     updateActiveModelLabel();
     window.dispatchEvent(new CustomEvent('labui-model-changed', { detail: { model: getActiveModel() } }));
   }
   function updateActiveModelLabel() {
     const el = document.getElementById('active-model-label');
-    if (!el) return;
     const m = getActiveModel();
+    document.querySelectorAll('[data-gen-label]').forEach(label => { label.textContent = m || 'Auto-selected'; });
+    if (!el) return;
     el.textContent = m ? (m.length > 16 ? m.slice(0, 15) + '…' : m) : '—';
     el.title = m || 'no model';
   }
   async function refreshModelDropdown() {
     try {
       const r = await fetch('/api/rag/models');
+      if (!r.ok) throw new Error('Model server unavailable');
       const d = await r.json();
+      if (d.error) throw new Error('Model server unavailable');
       window.labuiModels = d.models || [];
+      window.labuiModelError = '';
       if (d.default && !window.labuiDefaultModel) window.labuiDefaultModel = d.default;
-    } catch (e) { window.labuiModels = []; }
+    } catch (e) { window.labuiModels = []; window.labuiModelError = 'Model list unavailable. Check the LM Studio connection and refresh.'; }
     updateActiveModelLabel();
     renderModelDropdown();
   }
@@ -948,7 +945,12 @@
     if (!list) return;
     const active = getActiveModel();
     if (!window.labuiModels.length) {
-      list.innerHTML = '<div class="text-center text-[11px] py-3" style="color: var(--ink-faint)">No models found</div>';
+      list.replaceChildren();
+      const message = document.createElement('div');
+      message.className = 'text-center text-[11px] py-3';
+      message.style.color = 'var(--ink-faint)';
+      message.textContent = window.labuiModelError || 'No chat models available on the model server.';
+      list.appendChild(message);
       return;
     }
     list.innerHTML = window.labuiModels.map(m => {
@@ -967,21 +969,12 @@
     setActiveModel(name);
     renderModelDropdown();
   }
-  refreshModelDropdown();
+  if (document.getElementById('model-list')) refreshModelDropdown();
 
   // ── Command palette ──────────────────────────────────────────────
   // Everything reachable from one keystroke: pages, writing projects, and a
   // live search over the paper library.
-  const CMDK_PAGES = [
-    ['Dashboard', '/', 'page'], ['Planner — calendar, experiments, tasks', '/plan', 'page'], ['Write', '/write', 'page'],
-    ['Manuscripts', '/manuscripts', 'page'], ['Board — tasks & experiments by status', '/plan?view=board', 'page'],
-    ['Recommend a journal', '/recommend', 'page'],
-    ['Submissions', '/submissions', 'page'], ['Journals', '/journals', 'page'],
-    ['Chat with Papers', '/research/chat', 'lab'], ['Paper Search', '/research/search', 'lab'],
-    ['Knowledge Graph', '/research/graph', 'lab'], ['Memory', '/research/memory', 'lab'],
-    ['Library', '/library', 'lab'], ['Paper Review', '/review', 'lab'], ['Notes', '/research/notes', 'lab'], ['Writing Style', '/research/style', 'lab'],
-    ['Phrase bank (Writing Style)', '/research/style?tab=phrases', 'lab'], ['Upload papers', '/research/upload', 'lab'],
-  ];
+  const CMDK_PAGES = {{ workspace_commands | tojson }};
   let cmdkRows = [], cmdkIdx = 0, cmdkSeq = 0;
 
   function cmdkOpen() {
@@ -1028,22 +1021,19 @@
     cmdkPaint();
     const t = q.trim();
     document.getElementById('cmdk-hint').textContent =
-      t.length >= 2 ? 'searching library…' : 'type to search papers';
+      t.length >= 2 ? 'searching your work…' : 'type to search your work';
     if (t.length < 2) return;
     try {
-      const r = await fetch('/api/rag/cite/search?q=' + encodeURIComponent(t) + '&limit=6');
-      if (!r.ok || seq !== cmdkSeq) return;
-      const papers = await r.json();
+      const r = await fetch('/api/workspaces/search?q=' + encodeURIComponent(t) + '&limit=12&workspace={{ workspace.id }}');
       if (seq !== cmdkSeq) return;
-      cmdkRows = cmdkRows.concat((papers || []).map(p => ({
-        label: p.title || p.paper_id,
-        sub: [p.authors, p.year].filter(Boolean).join(' · '),
-        tag: 'paper',
-        href: '/research/search?q=' + encodeURIComponent(p.title || p.paper_id),
-      })));
-      document.getElementById('cmdk-hint').textContent = (papers || []).length + ' papers';
+      if (!r.ok) throw new Error('Search unavailable');
+      const data = await r.json();
+      if (seq !== cmdkSeq) return;
+      const matches = data.items || [];
+      cmdkRows = cmdkRows.concat(matches);
+      document.getElementById('cmdk-hint').textContent = matches.length + ' matching items';
       cmdkPaint();
-    } catch (e) { document.getElementById('cmdk-hint').textContent = 'library search unavailable'; }
+    } catch (e) { if (seq === cmdkSeq) document.getElementById('cmdk-hint').textContent = 'search unavailable'; }
   }
 
   function cmdkPaint() {
@@ -1115,6 +1105,7 @@
 <!-- @-mentions: attachMentions(), renderMentionsHtml/Plain(), openMention() -->
 <script src="/static/mentions.js"></script>
 
+<script src="/static/workspaces.js" defer></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>
